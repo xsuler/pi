@@ -10,8 +10,14 @@ import pytest
 
 
 class _Turn:
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
+    def __init__(self, *, item, messages, response):
+        self.item = item
+        self.messages = messages
+        self.response = response
+        metadata = response["areno"]
+        self.input_tokens = metadata.get("input_tokens", [])
+        self.response_tokens = metadata["response_tokens"]
+        self.response_logprobs = metadata["response_logprobs"]
 
 
 class _Trajectory:
@@ -72,6 +78,7 @@ def test_events_skip_non_trainable_assistant_messages():
 
     assert len(turns) == 1
     assert turns[0].response_tokens == [2]
+    assert turns[0].input_tokens == [1]
 
 
 def test_areno_metadata_accepts_wire_compatible_top_level_field():

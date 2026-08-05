@@ -98,14 +98,19 @@ def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
                     f"providerMetadata={message.get('providerMetadata')!r}"
                 )
             else:
+                assistant_message = _openai_message(message) or {"role": "assistant", "content": ""}
                 turns.append(
                     AgentTrajectoryTurn(
                         item=item,
                         messages=list(messages),
-                        input_tokens=[int(token) for token in input_tokens],
-                        response_tokens=[int(token) for token in tokens],
-                        response_logprobs=[float(value) for value in logprobs],
-                        parsed_tool_calls=_tool_calls(message),
+                        response={
+                            "choices": [{"index": 0, "message": assistant_message, "finish_reason": "stop"}],
+                            "areno": {
+                                "input_tokens": [int(token) for token in input_tokens],
+                                "response_tokens": [int(token) for token in tokens],
+                                "response_logprobs": [float(value) for value in logprobs],
+                            },
+                        },
                     )
                 )
         normalized = _openai_message(message)
