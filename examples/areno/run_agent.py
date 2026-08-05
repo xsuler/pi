@@ -34,11 +34,8 @@ async def _run_item(ctx, item) -> list[AgentTrajectoryTurn]:
     try:
         with tempfile.TemporaryDirectory(prefix="pi-areno-config-") as agent_dir:
             _write_models(Path(agent_dir), ctx.get_base_url(), ctx.api_key)
-            first_lines = await _run_pi_process(ctx, workspace.root, agent_dir, _prompt(item))
-            if _lines_have_tool_call(first_lines):
-                return _events_to_turns(item, first_lines)
-            retry_lines = await _run_pi_process(ctx, workspace.root, agent_dir, _tool_forcing_prompt(item))
-            return _events_to_turns(item, retry_lines)
+            lines = await _run_pi_process(ctx, workspace.root, agent_dir, _prompt(item))
+            return _events_to_turns(item, lines)
     finally:
         workspace.close()
 
@@ -80,18 +77,6 @@ async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> 
     if process.returncode != 0:
         raise RuntimeError(f"Pi exited with {process.returncode}: {stderr.decode(errors='replace')[-4000:]}")
     return stdout.decode(errors="replace").splitlines()
-
-
-def _lines_have_tool_call(lines: list[str]) -> bool:
-    for line in lines:
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        message = event.get("message")
-        if event.get("type") == "message_end" and isinstance(message, dict) and _tool_calls(message):
-            return True
-    return False
 
 
 def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
@@ -146,14 +131,6 @@ def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
     if not turns:
         details = "; ".join(assistant_diagnostics[-3:]) or "no assistant message_end events"
         raise RuntimeError(f"Pi produced no trainable assistant turns with AReno metadata: {details}")
-    if not any(turn.response["choices"][0]["message"].get("tool_calls") for turn in turns):
-        assistant_text = " | ".join(
-            str(turn.response["choices"][0]["message"].get("content") or "")[:500] for turn in turns[-3:]
-        )
-        raise RuntimeError(
-            "Pi produced a trainable trajectory but did not call any workspace tool; "
-            f"last assistant output: {assistant_text!r}"
-        )
     return turns
 
 
@@ -226,15 +203,6 @@ def _prompt(item) -> str:
         "The page must be self-contained and must not load external assets, fonts, scripts, or network resources. "
         f"Finish in at most {max_turns} assistant turns. Write each final file, verify that all three files exist, and do "
         "not delete them. Then give a concise final answer with no tool call."
-    )
-
-
-def _tool_forcing_prompt(item) -> str:
-    return (
-        "You must perform this task through Pi's workspace tools. Your first response must call the bash tool with "
-        'the command "ls -la". Then use the write tool to create index.html, styles.css, and app.js. Do not emit the '
-        "file contents as chat text and do not delete the files. After verifying all three files exist, finish with a "
-        f"short answer.\n\nDesign brief:\n{item.prompt}"
     )
 
 

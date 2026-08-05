@@ -124,37 +124,6 @@ def test_events_preserve_tool_calls_and_finish_reason():
     choice = turns[0].response["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
     assert choice["message"]["tool_calls"][0]["function"]["name"] == "write"
-    assert module._lines_have_tool_call(lines)
-
-
-def test_events_reject_trajectory_without_workspace_tools():
-    module = _load_module()
-    lines = [
-        _event(
-            {
-                "role": "assistant",
-                "content": [{"type": "text", "text": "Done."}],
-                "providerMetadata": {
-                    "areno": {"input_tokens": [1], "response_tokens": [2], "response_logprobs": [-0.2]}
-                },
-            }
-        )
-    ]
-
-    with pytest.raises(RuntimeError, match="did not call any workspace tool"):
-        module._events_to_turns(object(), lines)
-    assert not module._lines_have_tool_call(lines)
-
-
-def test_tool_forcing_prompt_requires_bash_as_first_action():
-    module = _load_module()
-    item = types.SimpleNamespace(prompt="Build a compact operations dashboard.")
-
-    prompt = module._tool_forcing_prompt(item)
-
-    assert 'first response must call the bash tool' in prompt
-    assert '"ls -la"' in prompt
-    assert "index.html, styles.css, and app.js" in prompt
 
 
 def test_areno_metadata_accepts_wire_compatible_top_level_field():
