@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -55,6 +56,15 @@ def _load_module():
                 sys.modules[name] = value
 
 
+def _load_rollout_module():
+    path = Path(__file__).with_name("test_rollout.py")
+    spec = importlib.util.spec_from_file_location("pi_areno_test_rollout", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
+
+
 def _event(message):
     return json.dumps({"type": "message_end", "message": message})
 
@@ -103,3 +113,29 @@ def test_events_report_pi_model_error_message():
 
     with pytest.raises(RuntimeError, match="HTTP 400: invalid request body"):
         module._events_to_turns(object(), lines)
+
+
+def test_rollout_summary_reports_tool_calls_and_generated_files(tmp_path, capsys):
+    module = _load_rollout_module()
+    (tmp_path / "index.html").write_text("<main>ok</main>", encoding="utf-8")
+    events = [
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "stopReason": "toolUse",
+                "content": [{"type": "toolCall", "name": "write", "arguments": {"path": "index.html"}}],
+                "providerMetadata": {
+                    "areno": {"input_tokens": [1, 2], "response_tokens": [3], "response_logprobs": [-0.1]}
+                },
+            },
+        }
+    ]
+    result = subprocess.CompletedProcess(args=["pi"], returncode=0, stdout="", stderr="")
+
+    trainable, tool_calls = module._print_summary(events, tmp_path, result)
+
+    output = capsys.readouterr().out
+    assert (trainable, tool_calls) == (1, 1)
+    assert "assistant stop='toolUse' input_tokens=2 response_tokens=1 tool_calls=1" in output
+    assert "file index.html: present" in output

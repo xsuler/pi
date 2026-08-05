@@ -52,6 +52,18 @@ efficiency bonus for finishing in fewer assistant turns. Every reward call also 
 SVG under `/tmp/areno_html`; task IDs, process IDs, and random suffixes prevent concurrent ranks from overwriting one
 another.
 
+Before training, run one real Pi rollout against an active AReno agentic proxy and inspect every assistant/tool event:
+
+```bash
+export ARENO_BASE_URL=http://127.0.0.1:PORT/v1
+export ARENO_API_KEY=areno-agentic
+export PI_ARENO_BINARY=/path/to/pi
+python examples/areno/test_rollout.py --raw
+```
+
+The command exits with status 2 when AReno returns trainable tokens but Pi produces no tool call. Use
+`--workspace /tmp/pi-rollout` to retain generated files for inspection.
+
 The judge receives both the complete HTML/CSS/JS source and the rendered SVG. Source quality is scored for semantic
 structure, responsive behavior, accessibility, validity, and self-containment. Functional completeness is scored
 separately by checking whether every requested interaction has real event logic and visible state transitions. The SVG
