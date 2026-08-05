@@ -19,7 +19,7 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
     workspaces = []
     try:
         for item in items:
-            workspaces.append(await asyncio.to_thread(CodingWorkspace.from_task, dict(item.record)))
+            workspaces.append(await asyncio.to_thread(_empty_workspace, item))
     except BaseException:
         for workspace in workspaces:
             workspace.close()
@@ -53,6 +53,11 @@ async def _run_item(ctx, item, workspace: CodingWorkspace) -> list[AgentTrajecto
         _write_models(Path(agent_dir), ctx.get_base_url(), ctx.api_key)
         lines = await _run_pi_process(ctx, workspace.root, agent_dir, _prompt(item))
         return _events_to_turns(item, lines)
+
+
+def _empty_workspace(item) -> CodingWorkspace:
+    root = Path(tempfile.mkdtemp(prefix="areno-coding-"))
+    return CodingWorkspace(task=dict(item.record), root=root)
 
 
 async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> list[str]:
@@ -210,14 +215,11 @@ def _text(content: Any) -> str:
 
 
 def _prompt(item) -> str:
-    max_turns = int(item.record.get("max_turns") or 8)
     return (
-        f"{item.prompt}\nUse Pi's bash, read, and write tools to inspect and modify the current working directory. "
-        "Do not answer with source code in chat. Create exactly three complete files in the current directory: "
-        "index.html, styles.css, and app.js. "
-        "The page must be self-contained and must not load external assets, fonts, scripts, or network resources. "
-        f"Finish in at most {max_turns} assistant turns. Write each final file, verify that all three files exist, and do "
-        "not delete them. Then give a concise final answer with no tool call."
+        f"{item.prompt}\nCreate exactly three complete files in the current directory: index.html, styles.css, and "
+        "app.js. Build a polished responsive implementation of the design brief with all requested interactions and "
+        "persisted state where relevant. Do not load external resources. Use Pi's tools to inspect the directory and "
+        "write the files, then give a concise final answer."
     )
 
 

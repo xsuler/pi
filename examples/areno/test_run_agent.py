@@ -162,12 +162,6 @@ def test_run_agent_isolates_workspace_per_expanded_record(tmp_path):
             self.root = root
             self.close_count = 0
 
-        @classmethod
-        def from_task(cls, task):
-            workspace = cls(task, tmp_path / f"sample-{len(created)}")
-            created.append(workspace)
-            return workspace
-
         def close(self):
             self.close_count += 1
 
@@ -182,6 +176,12 @@ def test_run_agent_isolates_workspace_per_expanded_record(tmp_path):
     batch = types.SimpleNamespace(iter_samples=lambda: iter(items))
     ctx = types.SimpleNamespace(max_running_prompts=2)
     module.CodingWorkspace = Workspace
+    def empty_workspace(item):
+        workspace = Workspace(dict(item.record), tmp_path / f"sample-{len(created)}")
+        created.append(workspace)
+        return workspace
+
+    module._empty_workspace = empty_workspace
     module._run_item = fake_run_item
 
     trajectory = asyncio.run(module.run_agent(ctx, batch))
