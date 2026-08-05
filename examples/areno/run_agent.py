@@ -16,12 +16,31 @@ from areno.api.agentic import AgentTrajectory, AgentTrajectoryTurn
 async def run_agent(ctx, batch) -> AgentTrajectory:
     items = list(batch.iter_samples())
     semaphore = asyncio.Semaphore(ctx.max_running_prompts)
+    workspaces = []
+    try:
+        for item in items:
+            workspaces.append(await asyncio.to_thread(CodingWorkspace.from_task, dict(item.record)))
+    except BaseException:
+        for workspace in workspaces:
+            workspace.close()
+        raise
+    roots = [workspace.root.resolve() for workspace in workspaces]
+    if len(set(roots)) != len(roots):
+        for workspace in workspaces:
+            workspace.close()
+        raise RuntimeError("Pi agent records must use distinct workspaces")
 
-    async def run_one(item):
+    async def run_one(item, workspace):
         async with semaphore:
-            return await _run_item(ctx, item)
+            try:
+                return await _run_item(ctx, item, workspace)
+            finally:
+                workspace.close()
 
-    results = await asyncio.gather(*(run_one(item) for item in items), return_exceptions=True)
+    results = await asyncio.gather(
+        *(run_one(item, workspace) for item, workspace in zip(items, workspaces, strict=True)),
+        return_exceptions=True,
+    )
     failures = [result for result in results if isinstance(result, BaseException)]
     if failures:
         raise failures[0]
@@ -29,15 +48,11 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
     return AgentTrajectory(turns=[turn for turns in grouped for turn in turns])
 
 
-async def _run_item(ctx, item) -> list[AgentTrajectoryTurn]:
-    workspace = await asyncio.to_thread(CodingWorkspace.from_task, item.record)
-    try:
-        with tempfile.TemporaryDirectory(prefix="pi-areno-config-") as agent_dir:
-            _write_models(Path(agent_dir), ctx.get_base_url(), ctx.api_key)
-            lines = await _run_pi_process(ctx, workspace.root, agent_dir, _prompt(item))
-            return _events_to_turns(item, lines)
-    finally:
-        workspace.close()
+async def _run_item(ctx, item, workspace: CodingWorkspace) -> list[AgentTrajectoryTurn]:
+    with tempfile.TemporaryDirectory(prefix="pi-areno-config-") as agent_dir:
+        _write_models(Path(agent_dir), ctx.get_base_url(), ctx.api_key)
+        lines = await _run_pi_process(ctx, workspace.root, agent_dir, _prompt(item))
+        return _events_to_turns(item, lines)
 
 
 async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> list[str]:

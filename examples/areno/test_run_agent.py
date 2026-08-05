@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import subprocess
@@ -148,6 +149,47 @@ def test_events_report_pi_model_error_message():
 
     with pytest.raises(RuntimeError, match="HTTP 400: invalid request body"):
         module._events_to_turns(object(), lines)
+
+
+def test_run_agent_isolates_workspace_per_expanded_record(tmp_path):
+    module = _load_module()
+    created = []
+    seen_roots = []
+
+    class Workspace:
+        def __init__(self, task, root):
+            self.task = task
+            self.root = root
+            self.close_count = 0
+
+        @classmethod
+        def from_task(cls, task):
+            workspace = cls(task, tmp_path / f"sample-{len(created)}")
+            created.append(workspace)
+            return workspace
+
+        def close(self):
+            self.close_count += 1
+
+    async def fake_run_item(ctx, item, workspace):
+        del ctx, item
+        seen_roots.append(workspace.root)
+        await asyncio.sleep(0)
+        return []
+
+    shared_record = {"id": "task-1", "files": {"README.md": "seed"}}
+    items = [types.SimpleNamespace(record=shared_record), types.SimpleNamespace(record=shared_record)]
+    batch = types.SimpleNamespace(iter_samples=lambda: iter(items))
+    ctx = types.SimpleNamespace(max_running_prompts=2)
+    module.CodingWorkspace = Workspace
+    module._run_item = fake_run_item
+
+    trajectory = asyncio.run(module.run_agent(ctx, batch))
+
+    assert trajectory.turns == []
+    assert len(set(seen_roots)) == 2
+    assert all(workspace.close_count == 1 for workspace in created)
+    assert created[0].task is not created[1].task
 
 
 def test_rollout_summary_reports_tool_calls_and_generated_files(tmp_path, capsys):
