@@ -134,6 +134,12 @@ def test_areno_metadata_accepts_wire_compatible_top_level_field():
     assert module._areno_metadata({"areno": metadata}) == metadata
 
 
+def test_training_explicitly_enables_every_builtin_pi_tool():
+    module = _load_module()
+
+    assert module.ALL_PI_TOOLS.split(",") == ["read", "bash", "edit", "write", "grep", "find", "ls"]
+
+
 def test_events_report_pi_model_error_message():
     module = _load_module()
     lines = [

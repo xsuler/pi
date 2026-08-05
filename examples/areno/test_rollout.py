@@ -17,6 +17,7 @@ DEFAULT_PROMPT = """Create exactly three complete files in the current directory
 Build a polished responsive task tracker with an input, add button, completion toggles, delete controls, and persisted
 state using localStorage. Do not load external resources. Use Pi's tools to inspect the directory and write the files,
 then give a concise final answer."""
+ALL_PI_TOOLS = "read,bash,edit,write,grep,find,ls"
 
 
 def main() -> int:
@@ -42,6 +43,8 @@ def main() -> int:
             "--no-skills",
             "--no-context-files",
             "--offline",
+            "--tools",
+            ALL_PI_TOOLS,
             "--provider",
             "areno",
             "--model",

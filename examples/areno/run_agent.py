@@ -15,6 +15,7 @@ from areno.agent.tools import CodingWorkspace
 from areno.api.agentic import AgentTrajectory, AgentTrajectoryTurn
 
 logger = logging.getLogger(__name__)
+ALL_PI_TOOLS = "read,bash,edit,write,grep,find,ls"
 
 
 async def run_agent(ctx, batch) -> AgentTrajectory:
@@ -92,6 +93,8 @@ async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> 
         "--no-skills",
         "--no-context-files",
         "--offline",
+        "--tools",
+        ALL_PI_TOOLS,
         "--provider",
         "areno",
         "--model",
