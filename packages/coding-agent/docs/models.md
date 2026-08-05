@@ -445,6 +445,7 @@ For providers with partial OpenAI compatibility, use the `compat` field.
       "baseUrl": "http://localhost:8080/v1",
       "api": "openai-completions",
       "compat": {
+		"supportsStreaming": false,
         "supportsUsageInStreaming": false,
         "maxTokensField": "max_tokens"
       },
@@ -456,6 +457,7 @@ For providers with partial OpenAI compatibility, use the `compat` field.
 
 | Field | Description |
 |-------|-------------|
+| `supportsStreaming` | Provider supports streamed chat completions. Set to `false` for non-streaming OpenAI-compatible endpoints. Default: `true`. |
 | `supportsStore` | Provider supports `store` field |
 | `supportsDeveloperRole` | Use `developer` vs `system` role |
 | `supportsReasoningEffort` | Support for `reasoning_effort` parameter |

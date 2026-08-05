@@ -239,6 +239,24 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: 0,
 			};
+			if (!compat.supportsStreaming) {
+				const nonStreamingParams = {
+					...params,
+					stream: false,
+				} as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+				const { data: completion, response } = await retryProviderRequest(
+					() => client.chat.completions.create(nonStreamingParams, requestOptions).withResponse(),
+					{
+						maxRetries: options?.maxRetries,
+						maxRetryDelayMs: options?.maxRetryDelayMs,
+						signal: options?.signal,
+					},
+				);
+				await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+				emitNonStreamingCompletion(stream, output, completion, model);
+				return;
+			}
+
 			const { data: openaiStream, response } = await retryProviderRequest(
 				() => client.chat.completions.create(params, requestOptions).withResponse(),
 				{
@@ -699,7 +717,7 @@ function buildParams(
 		prompt_cache_retention: cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined,
 	};
 
-	if (compat.supportsUsageInStreaming !== false) {
+	if (compat.supportsStreaming && compat.supportsUsageInStreaming !== false) {
 		(params as any).stream_options = { include_usage: true };
 	}
 
@@ -861,6 +879,57 @@ function buildParams(
 	}
 
 	return params;
+}
+
+function emitNonStreamingCompletion(
+	stream: AssistantMessageEventStream,
+	output: AssistantMessage,
+	completion: OpenAI.Chat.Completions.ChatCompletion,
+	model: Model<"openai-completions">,
+): void {
+	output.responseId = completion.id;
+	if (completion.model && completion.model !== model.id) output.responseModel = completion.model;
+	if (completion.usage) output.usage = parseChunkUsage(completion.usage, model);
+	const extension = (completion as unknown as { areno?: unknown }).areno;
+	if (isJsonRecord(extension)) output.providerMetadata = { areno: extension };
+
+	stream.push({ type: "start", partial: output });
+	const choice = completion.choices[0];
+	if (!choice) throw new Error("Provider returned no completion choices");
+	output.rawStopReason = choice.finish_reason ?? undefined;
+	const mapped = mapStopReason(choice.finish_reason ?? "stop");
+	output.stopReason = mapped.stopReason;
+	if (mapped.errorMessage) output.errorMessage = mapped.errorMessage;
+	if (output.stopReason === "error") throw new Error(output.errorMessage ?? "Provider returned an error stop reason");
+
+	if (choice.message.content) {
+		const block: TextContent = { type: "text", text: choice.message.content };
+		output.content.push(block);
+		const contentIndex = output.content.length - 1;
+		stream.push({ type: "text_start", contentIndex, partial: output });
+		stream.push({ type: "text_delta", contentIndex, delta: block.text, partial: output });
+		stream.push({ type: "text_end", contentIndex, content: block.text, partial: output });
+	}
+	for (const call of choice.message.tool_calls ?? []) {
+		if (call.type !== "function") continue;
+		const block: ToolCall = {
+			type: "toolCall",
+			id: call.id,
+			name: call.function.name,
+			arguments: parseStreamingJson(call.function.arguments),
+		};
+		output.content.push(block);
+		const contentIndex = output.content.length - 1;
+		stream.push({ type: "toolcall_start", contentIndex, partial: output });
+		stream.push({ type: "toolcall_delta", contentIndex, delta: call.function.arguments, partial: output });
+		stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: output });
+	}
+	stream.push({ type: "done", reason: output.stopReason as "stop" | "length" | "toolUse", message: output });
+	stream.end();
+}
+
+function isJsonRecord(value: unknown): value is Record<string, import("../types.ts").JsonValue> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function buildChatTemplateValues(
@@ -1465,6 +1534,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	const cacheControlFormat = provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
 
 	return {
+		supportsStreaming: true,
 		supportsStore: !isNonStandard,
 		supportsDeveloperRole: isOpenRouterDeveloperRoleModel || (!isNonStandard && !isOpenRouter),
 		supportsReasoningEffort:
@@ -1517,6 +1587,7 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
 	if (!model.compat) return detected;
 
 	return {
+		supportsStreaming: model.compat.supportsStreaming ?? detected.supportsStreaming,
 		supportsStore: model.compat.supportsStore ?? detected.supportsStore,
 		supportsDeveloperRole: model.compat.supportsDeveloperRole ?? detected.supportsDeveloperRole,
 		supportsReasoningEffort: model.compat.supportsReasoningEffort ?? detected.supportsReasoningEffort,
