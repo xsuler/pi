@@ -6,6 +6,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 class _Turn:
     def __init__(self, **kwargs):
@@ -77,3 +79,20 @@ def test_areno_metadata_accepts_wire_compatible_top_level_field():
     metadata = {"input_tokens": [1], "response_tokens": [2], "response_logprobs": [-0.2]}
 
     assert module._areno_metadata({"areno": metadata}) == metadata
+
+
+def test_events_report_pi_model_error_message():
+    module = _load_module()
+    lines = [
+        _event(
+            {
+                "role": "assistant",
+                "content": [],
+                "stopReason": "error",
+                "errorMessage": "HTTP 400: invalid request body",
+            }
+        )
+    ]
+
+    with pytest.raises(RuntimeError, match="HTTP 400: invalid request body"):
+        module._events_to_turns(object(), lines)

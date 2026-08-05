@@ -94,6 +94,7 @@ def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
             if not all(isinstance(value, list) for value in (tokens, logprobs, input_tokens)):
                 assistant_diagnostics.append(
                     f"keys={sorted(message)} stopReason={message.get('stopReason')!r} "
+                    f"errorMessage={message.get('errorMessage')!r} "
                     f"providerMetadata={message.get('providerMetadata')!r}"
                 )
             else:
