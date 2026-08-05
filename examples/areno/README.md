@@ -11,6 +11,16 @@ Build the binary first:
 npm --prefix packages/coding-agent run build:binary
 ```
 
+This branch also carries a prebuilt Linux x86-64 baseline binary. Extract it to the adapter's default location:
+
+```bash
+mkdir -p packages/coding-agent/dist
+tar -xzf packages/coding-agent/binaries/pi-linux-x64.tar.gz -C packages/coding-agent/dist
+packages/coding-agent/dist/pi --version
+```
+
+The archive SHA-256 is `8a82cb75bafca81004fbfdd8c76b83af1b9ae5c108738a594fd50a32852c3089`.
+
 The checked-in `web_tasks_4096.jsonl` contains 4096 independently specified product and interface design tasks. It is
 the source dataset; no combinatorial dataset generator is included.
 
