@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,8 @@ from areno.api.agentic import AgentTrajectory, AgentTrajectoryTurn
 
 async def run_agent(ctx, batch) -> AgentTrajectory:
     items = list(batch.iter_samples())
+    for item in items:
+        item.record = dict(item.record)
     semaphore = asyncio.Semaphore(ctx.max_running_prompts)
     workspaces = []
     try:
@@ -22,12 +25,12 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
             workspaces.append(await asyncio.to_thread(_empty_workspace, item))
     except BaseException:
         for workspace in workspaces:
-            workspace.close()
+            _discard_workspace(workspace)
         raise
     roots = [workspace.root.resolve() for workspace in workspaces]
     if len(set(roots)) != len(roots):
         for workspace in workspaces:
-            workspace.close()
+            _discard_workspace(workspace)
         raise RuntimeError("Pi agent records must use distinct workspaces")
 
     async def run_one(item, workspace):
@@ -43,6 +46,8 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
     )
     failures = [result for result in results if isinstance(result, BaseException)]
     if failures:
+        for workspace in workspaces:
+            _discard_workspace(workspace)
         raise failures[0]
     grouped = results
     return AgentTrajectory(turns=[turn for turns in grouped for turn in turns])
@@ -57,7 +62,12 @@ async def _run_item(ctx, item, workspace: CodingWorkspace) -> list[AgentTrajecto
 
 def _empty_workspace(item) -> CodingWorkspace:
     root = Path(tempfile.mkdtemp(prefix="areno-coding-"))
-    return CodingWorkspace(task=dict(item.record), root=root)
+    item.record["_pi_workspace"] = str(root)
+    return CodingWorkspace(task=item.record, root=root, cleanup_on_close=False)
+
+
+def _discard_workspace(workspace: CodingWorkspace) -> None:
+    shutil.rmtree(workspace.root, ignore_errors=True)
 
 
 async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> list[str]:

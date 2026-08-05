@@ -20,11 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 def reward_fn(record) -> float:
-    files = _extract_files(record)
-    if set(files) != set(REQUIRED_FILES):
-        logger.warning("Pi web reward missing required files: found=%s", sorted(files))
-        return -1.0
+    workspace = _record_workspace(record)
     try:
+        files = _extract_workspace_files(workspace) if workspace is not None else _extract_files(record)
+        if set(files) != set(REQUIRED_FILES):
+            logger.warning("Pi web reward missing required files: found=%s workspace=%s", sorted(files), workspace)
+            return -1.0
         rendered_svg = _html_to_svg(files, _sample_id(record))
         html_quality, functionality, alignment, aesthetics = _judge(
             rendered_svg,
@@ -34,6 +35,9 @@ def reward_fn(record) -> float:
     except Exception as exc:
         logger.warning("Pi web reward evaluation failed: %s", exc, exc_info=True)
         return -1.0
+    finally:
+        if workspace is not None:
+            shutil.rmtree(workspace, ignore_errors=True)
     turns = max(sum(event.type == "request" for event in record.trace), 1)
     limit = max(int(record.source_record.get("max_turns") or 8), 1)
     efficiency = max(0.0, min(1.0, (limit - turns + 1) / limit))
@@ -44,6 +48,28 @@ def reward_fn(record) -> float:
         + 0.25 * aesthetics
     ) / 10.0
     return max(-1.0, min(1.0, 0.9 * judged_score + 0.1 * efficiency))
+
+
+def _record_workspace(record) -> Path | None:
+    source = getattr(record, "source_record", None)
+    raw = source.get("_pi_workspace") if isinstance(source, dict) else None
+    if not raw:
+        return None
+    workspace = Path(str(raw)).resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if workspace.parent != temp_root or not workspace.name.startswith("areno-coding-"):
+        raise RuntimeError(f"refusing unsafe Pi workspace path: {workspace}")
+    return workspace
+
+
+def _extract_workspace_files(workspace: Path) -> dict[str, str]:
+    files: dict[str, str] = {}
+    for name in REQUIRED_FILES:
+        path = workspace / name
+        if not path.is_file() or path.stat().st_size > 1_000_000:
+            continue
+        files[name] = path.read_text(encoding="utf-8")
+    return files
 
 
 def _extract_files(record) -> dict[str, str]:

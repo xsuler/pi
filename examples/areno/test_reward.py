@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import tempfile
 import types
 from pathlib import Path
 
@@ -50,3 +51,32 @@ def test_extract_files_uses_last_write_and_rejects_nested_relative_paths():
     )
 
     assert reward._extract_files(record) == {"index.html": "final"}
+
+
+def test_reward_reads_final_workspace_and_cleans_it(monkeypatch):
+    reward = _load_reward_module()
+    workspace = Path(tempfile.mkdtemp(prefix="areno-coding-"))
+    (workspace / "index.html").write_text("<main>final</main>", encoding="utf-8")
+    (workspace / "styles.css").write_text("main { display: block; }", encoding="utf-8")
+    (workspace / "app.js").write_text("console.log('final');", encoding="utf-8")
+    record = types.SimpleNamespace(
+        source_record={"id": "task-1", "max_turns": 8, "_pi_workspace": str(workspace)},
+        prompt="Build a page",
+        trace=[types.SimpleNamespace(type="request")],
+        tool_calls=[],
+    )
+    captured = {}
+
+    def fake_render(files, sample_id):
+        captured.update(files)
+        assert sample_id == "task-1"
+        return b"svg"
+
+    monkeypatch.setattr(reward, "_html_to_svg", fake_render)
+    monkeypatch.setattr(reward, "_judge", lambda *args: (8.0, 8.0, 8.0, 8.0))
+
+    score = reward.reward_fn(record)
+
+    assert score > 0
+    assert captured["index.html"] == "<main>final</main>"
+    assert not workspace.exists()
