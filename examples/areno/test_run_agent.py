@@ -187,9 +187,52 @@ def test_run_agent_isolates_workspace_per_expanded_record(tmp_path):
     trajectory = asyncio.run(module.run_agent(ctx, batch))
 
     assert trajectory.turns == []
+    assert trajectory.invalid_items == []
     assert len(set(seen_roots)) == 2
     assert all(workspace.close_count == 1 for workspace in created)
     assert created[0].task is not created[1].task
+
+
+def test_run_agent_filters_only_failed_sample_workspaces(tmp_path):
+    module = _load_module()
+    created = []
+
+    class Workspace:
+        def __init__(self, task, root):
+            self.task = task
+            self.root = root
+
+        def close(self):
+            pass
+
+    def empty_workspace(item):
+        workspace = Workspace(dict(item.record), tmp_path / f"sample-{len(created)}")
+        workspace.root.mkdir()
+        created.append(workspace)
+        return workspace
+
+    async def fake_run_item(ctx, item, workspace):
+        del ctx, workspace
+        if item.sample_index == 1:
+            raise RuntimeError("no assistant message_end events")
+        return [f"turn-{item.sample_index}"]
+
+    items = [
+        types.SimpleNamespace(record={"id": "task-1"}, prompt_index=0, sample_index=0),
+        types.SimpleNamespace(record={"id": "task-1"}, prompt_index=0, sample_index=1),
+    ]
+    batch = types.SimpleNamespace(iter_samples=lambda: iter(items))
+    ctx = types.SimpleNamespace(max_running_prompts=2)
+    module.CodingWorkspace = Workspace
+    module._empty_workspace = empty_workspace
+    module._run_item = fake_run_item
+
+    trajectory = asyncio.run(module.run_agent(ctx, batch))
+
+    assert trajectory.turns == ["turn-0"]
+    assert trajectory.invalid_items == [items[1]]
+    assert created[0].root.exists()
+    assert not created[1].root.exists()
 
 
 def test_rollout_summary_reports_tool_calls_and_generated_files(tmp_path, capsys):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -12,6 +13,8 @@ from typing import Any
 
 from areno.agent.tools import CodingWorkspace
 from areno.api.agentic import AgentTrajectory, AgentTrajectoryTurn
+
+logger = logging.getLogger(__name__)
 
 
 async def run_agent(ctx, batch) -> AgentTrajectory:
@@ -44,13 +47,21 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
         *(run_one(item, workspace) for item, workspace in zip(items, workspaces, strict=True)),
         return_exceptions=True,
     )
-    failures = [result for result in results if isinstance(result, BaseException)]
-    if failures:
-        for workspace in workspaces:
+    valid_turns = []
+    invalid_items = []
+    for item, workspace, result in zip(items, workspaces, results, strict=True):
+        if isinstance(result, BaseException):
             _discard_workspace(workspace)
-        raise failures[0]
-    grouped = results
-    return AgentTrajectory(turns=[turn for turns in grouped for turn in turns])
+            invalid_items.append(item)
+            logger.warning(
+                "filtering invalid Pi rollout prompt_index=%s sample_index=%s error=%s",
+                item.prompt_index,
+                item.sample_index,
+                result,
+            )
+        else:
+            valid_turns.extend(result)
+    return AgentTrajectory(turns=valid_turns, invalid_items=invalid_items)
 
 
 async def _run_item(ctx, item, workspace: CodingWorkspace) -> list[AgentTrajectoryTurn]:
