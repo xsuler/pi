@@ -99,12 +99,19 @@ def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
                 )
             else:
                 assistant_message = _openai_message(message) or {"role": "assistant", "content": ""}
+                tool_calls = assistant_message.get("tool_calls") or []
                 turns.append(
                     AgentTrajectoryTurn(
                         item=item,
                         messages=list(messages),
                         response={
-                            "choices": [{"index": 0, "message": assistant_message, "finish_reason": "stop"}],
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "message": assistant_message,
+                                    "finish_reason": "tool_calls" if tool_calls else "stop",
+                                }
+                            ],
                             "areno": {
                                 "input_tokens": [int(token) for token in input_tokens],
                                 "response_tokens": [int(token) for token in tokens],
@@ -119,6 +126,8 @@ def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
     if not turns:
         details = "; ".join(assistant_diagnostics[-3:]) or "no assistant message_end events"
         raise RuntimeError(f"Pi produced no trainable assistant turns with AReno metadata: {details}")
+    if not any(turn.response["choices"][0]["message"].get("tool_calls") for turn in turns):
+        raise RuntimeError("Pi produced a trainable trajectory but did not call any workspace tool")
     return turns
 
 
@@ -185,10 +194,12 @@ def _text(content: Any) -> str:
 def _prompt(item) -> str:
     max_turns = int(item.record.get("max_turns") or 8)
     return (
-        f"{item.prompt}\nCreate exactly three complete files in the current directory: index.html, styles.css, and app.js. "
+        f"{item.prompt}\nUse Pi's bash, read, and write tools to inspect and modify the current working directory. "
+        "Do not answer with source code in chat. Create exactly three complete files in the current directory: "
+        "index.html, styles.css, and app.js. "
         "The page must be self-contained and must not load external assets, fonts, scripts, or network resources. "
-        f"Finish in at most {max_turns} assistant turns. Use the write tool once for each final file, then give a concise "
-        "final answer with no tool call."
+        f"Finish in at most {max_turns} assistant turns. Write each final file, verify that all three files exist, and do "
+        "not delete them. Then give a concise final answer with no tool call."
     )
 
 

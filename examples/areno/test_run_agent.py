@@ -76,7 +76,14 @@ def test_events_skip_non_trainable_assistant_messages():
         _event(
             {
                 "role": "assistant",
-                "content": [{"type": "text", "text": "answer"}],
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "call_1",
+                        "name": "write",
+                        "arguments": {"path": "index.html", "content": "ok"},
+                    }
+                ],
                 "providerMetadata": {
                     "areno": {"input_tokens": [1], "response_tokens": [2], "response_logprobs": [-0.2]}
                 },
@@ -89,6 +96,52 @@ def test_events_skip_non_trainable_assistant_messages():
     assert len(turns) == 1
     assert turns[0].response_tokens == [2]
     assert turns[0].input_tokens == [1]
+
+
+def test_events_preserve_tool_calls_and_finish_reason():
+    module = _load_module()
+    lines = [
+        _event(
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "call_1",
+                        "name": "write",
+                        "arguments": {"path": "index.html", "content": "<main>ok</main>"},
+                    }
+                ],
+                "providerMetadata": {
+                    "areno": {"input_tokens": [1], "response_tokens": [2], "response_logprobs": [-0.2]}
+                },
+            }
+        )
+    ]
+
+    turns = module._events_to_turns(object(), lines)
+
+    choice = turns[0].response["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "write"
+
+
+def test_events_reject_trajectory_without_workspace_tools():
+    module = _load_module()
+    lines = [
+        _event(
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Done."}],
+                "providerMetadata": {
+                    "areno": {"input_tokens": [1], "response_tokens": [2], "response_logprobs": [-0.2]}
+                },
+            }
+        )
+    ]
+
+    with pytest.raises(RuntimeError, match="did not call any workspace tool"):
+        module._events_to_turns(object(), lines)
 
 
 def test_areno_metadata_accepts_wire_compatible_top_level_field():
