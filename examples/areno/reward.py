@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 import shutil
@@ -11,15 +12,17 @@ import subprocess
 import tempfile
 import urllib.request
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 REQUIRED_FILES = ("index.html", "styles.css", "app.js")
+logger = logging.getLogger(__name__)
 
 
 def reward_fn(record) -> float:
     files = _extract_files(record)
     if set(files) != set(REQUIRED_FILES):
+        logger.warning("Pi web reward missing required files: found=%s", sorted(files))
         return -1.0
     try:
         rendered_svg = _html_to_svg(files, _sample_id(record))
@@ -28,7 +31,8 @@ def reward_fn(record) -> float:
             files,
             str(record.source_record.get("design_prompt") or record.prompt),
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning("Pi web reward evaluation failed: %s", exc, exc_info=True)
         return -1.0
     turns = max(sum(event.type == "request" for event in record.trace), 1)
     limit = max(int(record.source_record.get("max_turns") or 8), 1)
@@ -55,10 +59,13 @@ def _extract_files(record) -> dict[str, str]:
                 continue
         if not isinstance(args, dict):
             continue
-        path = str(args.get("path") or "")
+        path = str(args.get("path") or "").replace("\\", "/")
+        parsed_path = PurePosixPath(path)
+        name = parsed_path.name
         content = args.get("content")
-        if path in REQUIRED_FILES and isinstance(content, str) and len(content) <= 1_000_000:
-            files[path] = content
+        is_direct_path = parsed_path.is_absolute() or parsed_path.parent == PurePosixPath(".")
+        if name in REQUIRED_FILES and is_direct_path and isinstance(content, str) and len(content) <= 1_000_000:
+            files[name] = content
     return files
 
 
