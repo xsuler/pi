@@ -19,7 +19,9 @@ tar -xzf packages/coding-agent/binaries/pi-linux-x64.tar.gz -C packages/coding-a
 packages/coding-agent/dist/pi --version
 ```
 
-The archive SHA-256 is `8a82cb75bafca81004fbfdd8c76b83af1b9ae5c108738a594fd50a32852c3089`.
+Extract the complete archive rather than copying only the `pi` executable: the adjacent `theme/`, `assets/`, WASM,
+and native runtime files are required by interactive Pi features. The archive SHA-256 is
+`2e699e9f4415b8740c8420c7d65234fe8e74ccdb3fa21aa7690c82aed5ac35a2`.
 
 The checked-in `web_tasks_4096.jsonl` contains 4096 independently specified product and interface design tasks. It is
 the source dataset; no combinatorial dataset generator is included.
