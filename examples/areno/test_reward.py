@@ -60,7 +60,7 @@ def test_reward_reads_final_workspace_and_cleans_it(monkeypatch):
     (workspace / "styles.css").write_text("main { display: block; }", encoding="utf-8")
     (workspace / "app.js").write_text("console.log('final');", encoding="utf-8")
     record = types.SimpleNamespace(
-        source_record={"id": "task-1", "max_turns": 8, "_pi_workspace": str(workspace)},
+        source_record={"id": "task-1", "_pi_workspace": str(workspace)},
         prompt="Build a page",
         trace=[types.SimpleNamespace(type="request")],
         tool_calls=[],

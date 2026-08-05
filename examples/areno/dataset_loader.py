@@ -24,7 +24,7 @@ def load_training_dataset(dataset_path: str, *, default_loader, **_: object) -> 
         record["id"] = task_id
         record["prompt"] = prompt
         record["design_prompt"] = prompt
-        record["max_turns"] = max(1, int(record.get("max_turns") or 8))
+        record.pop("max_turns", None)
         record["files"] = {
             "README.md": "Create index.html, styles.css, and app.js for the design brief supplied by the agent prompt.\n"
         }

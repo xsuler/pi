@@ -39,8 +39,7 @@ def reward_fn(record) -> float:
         if workspace is not None:
             shutil.rmtree(workspace, ignore_errors=True)
     turns = max(sum(event.type == "request" for event in record.trace), 1)
-    limit = max(int(record.source_record.get("max_turns") or 8), 1)
-    efficiency = max(0.0, min(1.0, (limit - turns + 1) / limit))
+    efficiency = 1.0 / turns
     judged_score = (
         0.20 * html_quality
         + 0.25 * functionality
