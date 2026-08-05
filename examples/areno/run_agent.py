@@ -34,44 +34,64 @@ async def _run_item(ctx, item) -> list[AgentTrajectoryTurn]:
     try:
         with tempfile.TemporaryDirectory(prefix="pi-areno-config-") as agent_dir:
             _write_models(Path(agent_dir), ctx.get_base_url(), ctx.api_key)
-            process = await asyncio.create_subprocess_exec(
-                str(_pi_binary()),
-                "--mode",
-                "json",
-                "--print",
-                "--no-session",
-                "--no-extensions",
-                "--no-skills",
-                "--no-context-files",
-                "--offline",
-                "--provider",
-                "areno",
-                "--model",
-                "policy",
-                "--api-key",
-                ctx.api_key,
-                _prompt(item),
-                cwd=workspace.root,
-                env={**os.environ, "PI_CODING_AGENT_DIR": agent_dir, "PI_OFFLINE": "1"},
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=900)
-            except BaseException:
-                if process.returncode is None:
-                    process.terminate()
-                    try:
-                        await asyncio.wait_for(process.wait(), timeout=5)
-                    except asyncio.TimeoutError:
-                        process.kill()
-                        await process.wait()
-                raise
-            if process.returncode != 0:
-                raise RuntimeError(f"Pi exited with {process.returncode}: {stderr.decode(errors='replace')[-4000:]}")
-        return _events_to_turns(item, stdout.decode(errors="replace").splitlines())
+            first_lines = await _run_pi_process(ctx, workspace.root, agent_dir, _prompt(item))
+            if _lines_have_tool_call(first_lines):
+                return _events_to_turns(item, first_lines)
+            retry_lines = await _run_pi_process(ctx, workspace.root, agent_dir, _tool_forcing_prompt(item))
+            return _events_to_turns(item, retry_lines)
     finally:
         workspace.close()
+
+
+async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> list[str]:
+    process = await asyncio.create_subprocess_exec(
+        str(_pi_binary()),
+        "--mode",
+        "json",
+        "--print",
+        "--no-session",
+        "--no-extensions",
+        "--no-skills",
+        "--no-context-files",
+        "--offline",
+        "--provider",
+        "areno",
+        "--model",
+        "policy",
+        "--api-key",
+        ctx.api_key,
+        prompt,
+        cwd=workspace,
+        env={**os.environ, "PI_CODING_AGENT_DIR": agent_dir, "PI_OFFLINE": "1"},
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=900)
+    except BaseException:
+        if process.returncode is None:
+            process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+        raise
+    if process.returncode != 0:
+        raise RuntimeError(f"Pi exited with {process.returncode}: {stderr.decode(errors='replace')[-4000:]}")
+    return stdout.decode(errors="replace").splitlines()
+
+
+def _lines_have_tool_call(lines: list[str]) -> bool:
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        message = event.get("message")
+        if event.get("type") == "message_end" and isinstance(message, dict) and _tool_calls(message):
+            return True
+    return False
 
 
 def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
@@ -127,7 +147,13 @@ def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
         details = "; ".join(assistant_diagnostics[-3:]) or "no assistant message_end events"
         raise RuntimeError(f"Pi produced no trainable assistant turns with AReno metadata: {details}")
     if not any(turn.response["choices"][0]["message"].get("tool_calls") for turn in turns):
-        raise RuntimeError("Pi produced a trainable trajectory but did not call any workspace tool")
+        assistant_text = " | ".join(
+            str(turn.response["choices"][0]["message"].get("content") or "")[:500] for turn in turns[-3:]
+        )
+        raise RuntimeError(
+            "Pi produced a trainable trajectory but did not call any workspace tool; "
+            f"last assistant output: {assistant_text!r}"
+        )
     return turns
 
 
@@ -200,6 +226,15 @@ def _prompt(item) -> str:
         "The page must be self-contained and must not load external assets, fonts, scripts, or network resources. "
         f"Finish in at most {max_turns} assistant turns. Write each final file, verify that all three files exist, and do "
         "not delete them. Then give a concise final answer with no tool call."
+    )
+
+
+def _tool_forcing_prompt(item) -> str:
+    return (
+        "You must perform this task through Pi's workspace tools. Your first response must call the bash tool with "
+        'the command "ls -la". Then use the write tool to create index.html, styles.css, and app.js. Do not emit the '
+        "file contents as chat text and do not delete the files. After verifying all three files exist, finish with a "
+        f"short answer.\n\nDesign brief:\n{item.prompt}"
     )
 
 
