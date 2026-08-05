@@ -70,6 +70,7 @@ const ChatTemplateKwargVariableSchema = Type.Object({
 const ChatTemplateKwargSchema = Type.Union([ChatTemplateKwargScalarSchema, ChatTemplateKwargVariableSchema]);
 
 const OpenAICompletionsCompatSchema = Type.Object({
+	supportsStreaming: Type.Optional(Type.Boolean()),
 	supportsStore: Type.Optional(Type.Boolean()),
 	supportsDeveloperRole: Type.Optional(Type.Boolean()),
 	supportsReasoningEffort: Type.Optional(Type.Boolean()),

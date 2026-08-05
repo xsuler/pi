@@ -21,7 +21,11 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
         async with semaphore:
             return await _run_item(ctx, item)
 
-    grouped = await asyncio.gather(*(run_one(item) for item in items))
+    results = await asyncio.gather(*(run_one(item) for item in items), return_exceptions=True)
+    failures = [result for result in results if isinstance(result, BaseException)]
+    if failures:
+        raise failures[0]
+    grouped = results
     return AgentTrajectory(turns=[turn for turns in grouped for turn in turns])
 
 
@@ -52,7 +56,17 @@ async def _run_item(ctx, item) -> list[AgentTrajectoryTurn]:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=900)
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=900)
+            except BaseException:
+                if process.returncode is None:
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5)
+                    except asyncio.TimeoutError:
+                        process.kill()
+                        await process.wait()
+                raise
             if process.returncode != 0:
                 raise RuntimeError(f"Pi exited with {process.returncode}: {stderr.decode(errors='replace')[-4000:]}")
         return _events_to_turns(item, stdout.decode(errors="replace").splitlines())
@@ -63,6 +77,7 @@ async def _run_item(ctx, item) -> list[AgentTrajectoryTurn]:
 def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
     messages: list[dict[str, Any]] = []
     turns: list[AgentTrajectoryTurn] = []
+    assistant_diagnostics: list[str] = []
     for line in lines:
         try:
             event = json.loads(line)
@@ -72,28 +87,46 @@ def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
             continue
         message = event["message"]
         if message.get("role") == "assistant":
-            metadata = message.get("providerMetadata", {}).get("areno", {})
+            metadata = _areno_metadata(message)
             tokens = metadata.get("response_tokens")
             logprobs = metadata.get("response_logprobs")
             input_tokens = metadata.get("input_tokens")
             if not all(isinstance(value, list) for value in (tokens, logprobs, input_tokens)):
-                raise RuntimeError("Pi assistant message is missing AReno training metadata")
-            turns.append(
-                AgentTrajectoryTurn(
-                    item=item,
-                    messages=list(messages),
-                    input_tokens=[int(token) for token in input_tokens],
-                    response_tokens=[int(token) for token in tokens],
-                    response_logprobs=[float(value) for value in logprobs],
-                    parsed_tool_calls=_tool_calls(message),
+                assistant_diagnostics.append(
+                    f"keys={sorted(message)} stopReason={message.get('stopReason')!r} "
+                    f"providerMetadata={message.get('providerMetadata')!r}"
                 )
-            )
+            else:
+                turns.append(
+                    AgentTrajectoryTurn(
+                        item=item,
+                        messages=list(messages),
+                        input_tokens=[int(token) for token in input_tokens],
+                        response_tokens=[int(token) for token in tokens],
+                        response_logprobs=[float(value) for value in logprobs],
+                        parsed_tool_calls=_tool_calls(message),
+                    )
+                )
         normalized = _openai_message(message)
         if normalized is not None:
             messages.append(normalized)
     if not turns:
-        raise RuntimeError("Pi produced no trainable assistant turns")
+        details = "; ".join(assistant_diagnostics[-3:]) or "no assistant message_end events"
+        raise RuntimeError(f"Pi produced no trainable assistant turns with AReno metadata: {details}")
     return turns
+
+
+def _areno_metadata(message: dict[str, Any]) -> dict[str, Any]:
+    """Read AReno metadata across Pi's typed and wire-compatible representations."""
+    candidates = (
+        message.get("providerMetadata"),
+        message.get("provider_metadata"),
+        message.get("metadata"),
+    )
+    for candidate in candidates:
+        if isinstance(candidate, dict) and isinstance(candidate.get("areno"), dict):
+            return candidate["areno"]
+    return message.get("areno") if isinstance(message.get("areno"), dict) else {}
 
 
 def _openai_message(message: dict[str, Any]) -> dict[str, Any] | None:

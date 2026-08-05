@@ -354,6 +354,7 @@ describe("ModelRegistry", () => {
 					apiKey: "DEMO_KEY",
 					api: "openai-completions",
 					compat: {
+						supportsStreaming: false,
 						supportsUsageInStreaming: false,
 						maxTokensField: "max_tokens",
 					},
@@ -373,6 +374,7 @@ describe("ModelRegistry", () => {
 			const registry = await createModelRegistry(authStorage, modelsJsonPath);
 			const compat = registry.find("demo", "demo-model")?.compat as OpenAICompletionsCompat | undefined;
 
+			expect(compat?.supportsStreaming).toBe(false);
 			expect(compat?.supportsUsageInStreaming).toBe(false);
 			expect(compat?.maxTokensField).toBe("max_tokens");
 		});
