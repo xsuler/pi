@@ -36,7 +36,9 @@ Set `PI_ARENO_BINARY` when the compiled binary is stored outside
 `packages/coding-agent/dist/pi`. The reward invokes an existing Chromium executable directly; it does not require
 Playwright. It renders the HTML, CSS, and JavaScript at 1440x1024 with external network access disabled, wraps the
 screenshot in a self-contained SVG, asks the external vision model for four separate scores, and adds a small
-efficiency bonus for finishing in fewer assistant turns.
+efficiency bonus for finishing in fewer assistant turns. Every reward call also saves its PNG screenshot and wrapped
+SVG under `/tmp/areno_html`; task IDs, process IDs, and random suffixes prevent concurrent ranks from overwriting one
+another.
 
 The judge receives both the complete HTML/CSS/JS source and the rendered SVG. Source quality is scored for semantic
 structure, responsive behavior, accessibility, validity, and self-containment. Functional completeness is scored

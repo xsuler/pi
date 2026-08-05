@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ def reward_fn(record) -> float:
     if set(files) != set(REQUIRED_FILES):
         return -1.0
     try:
-        rendered_svg = _html_to_svg(files)
+        rendered_svg = _html_to_svg(files, _sample_id(record))
         html_quality, functionality, alignment, aesthetics = _judge(
             rendered_svg,
             files,
@@ -61,7 +62,7 @@ def _extract_files(record) -> dict[str, str]:
     return files
 
 
-def _html_to_svg(files: dict[str, str]) -> bytes:
+def _html_to_svg(files: dict[str, str], sample_id: str = "sample") -> bytes:
     with tempfile.TemporaryDirectory(prefix="pi-web-reward-") as directory:
         root = Path(directory)
         for name, content in files.items():
@@ -99,8 +100,23 @@ def _html_to_svg(files: dict[str, str]) -> bytes:
         '<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1024" viewBox="0 0 1440 1024">'
         f'<image width="1440" height="1024" href="data:image/png;base64,{encoded}"/>'
         "</svg>"
-    )
-    return svg.encode("utf-8")
+    ).encode("utf-8")
+    _save_image_sample(sample_id, png, svg)
+    return svg
+
+
+def _sample_id(record: Any) -> str:
+    source = getattr(record, "source_record", {})
+    raw = source.get("id") if isinstance(source, dict) else None
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", str(raw or "sample")).strip("-.") or "sample"
+
+
+def _save_image_sample(sample_id: str, png: bytes, svg: bytes) -> None:
+    output = Path("/tmp/areno_html")
+    output.mkdir(parents=True, exist_ok=True)
+    stem = f"{sample_id}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    (output / f"{stem}.png").write_bytes(png)
+    (output / f"{stem}.svg").write_bytes(svg)
 
 
 def _chromium_binary() -> str:
