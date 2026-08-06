@@ -6,7 +6,6 @@ import asyncio
 import json
 import logging
 import os
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -31,10 +30,6 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
             try:
                 workspace = await asyncio.to_thread(_empty_workspace, item)
                 return await _run_item(ctx, item, workspace)
-            except BaseException:
-                if workspace is not None:
-                    _discard_workspace(workspace)
-                raise
             finally:
                 if workspace is not None:
                     workspace.close()
@@ -49,9 +44,12 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
         if isinstance(result, BaseException):
             invalid_items.append(item)
             logger.warning(
-                "filtering invalid Pi rollout prompt_index=%s sample_index=%s error=%s",
+                "filtering invalid Pi rollout prompt_index=%s sample_index=%s "
+                "workspace=%s error_type=%s error=%r",
                 item.prompt_index,
                 item.sample_index,
+                item.record.get("_pi_workspace", "<not-created>"),
+                type(result).__name__,
                 result,
             )
         else:
@@ -72,10 +70,6 @@ def _empty_workspace(item) -> CodingWorkspace:
     root = Path(tempfile.mkdtemp(prefix="areno-coding-"))
     item.record["_pi_workspace"] = str(root)
     return CodingWorkspace(task=item.record, root=root, cleanup_on_close=False)
-
-
-def _discard_workspace(workspace: CodingWorkspace) -> None:
-    shutil.rmtree(workspace.root, ignore_errors=True)
 
 
 def _validate_generated_files(workspace: Path) -> None:

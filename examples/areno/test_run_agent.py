@@ -252,7 +252,7 @@ def test_run_agent_isolates_workspace_per_expanded_record(tmp_path):
     assert created[0].task is not created[1].task
 
 
-def test_run_agent_filters_only_failed_sample_workspaces(tmp_path):
+def test_run_agent_preserves_failed_sample_workspaces(tmp_path):
     module = _load_module()
     created = []
 
@@ -291,7 +291,7 @@ def test_run_agent_filters_only_failed_sample_workspaces(tmp_path):
     assert trajectory.turns == ["turn-0"]
     assert trajectory.invalid_items == [items[1]]
     assert created[0].root.exists()
-    assert not created[1].root.exists()
+    assert created[1].root.exists()
 
 
 def test_rollout_summary_reports_tool_calls_and_generated_files(tmp_path, capsys):
