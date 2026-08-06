@@ -16,6 +16,11 @@ from typing import Any
 
 ALL_PI_TOOLS = "read,bash,edit,write,grep,find,ls"
 REQUIRED_FILES = ("index.html", "styles.css", "app.js")
+TOOL_PROTOCOL_PROMPT = """When creating the requested page, follow this tool protocol exactly:
+- The working directory already exists. Never create it and never pass the working-directory path to write.
+- Call write once per turn with a relative path that is exactly index.html, styles.css, or app.js.
+- Include non-empty content in every write call. Keep each file compact enough to fit within 700 output tokens.
+- Finish all three files before replying with final text. If a tool fails, correct its arguments instead of repeating them."""
 
 
 @dataclass(slots=True)
@@ -119,6 +124,8 @@ async def _run_one(
             "--offline",
             "--tools",
             ALL_PI_TOOLS,
+            "--append-system-prompt",
+            TOOL_PROTOCOL_PROMPT,
             "--provider",
             "areno",
             "--model",
@@ -197,8 +204,8 @@ def _training_prompt(prompt: str) -> str:
     return (
         f"{prompt}\nCreate exactly three complete files in the current directory: index.html, styles.css, and "
         "app.js. Build a polished responsive implementation of the design brief with all requested interactions and "
-        "persisted state where relevant. Do not load external resources. Use Pi's tools to inspect the directory and "
-        "write the files, then give a concise final answer."
+        "persisted state where relevant. Do not load external resources. Write each required file in a separate tool "
+        "turn using only its relative filename, then give a concise final answer."
     )
 
 

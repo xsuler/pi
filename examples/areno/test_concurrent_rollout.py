@@ -88,7 +88,17 @@ def test_training_prompt_requires_three_files_and_pi_tools():
 
     assert prompt.startswith("Build a task tracker.")
     assert "index.html, styles.css, and app.js" in prompt
-    assert "Use Pi's tools" in prompt
+    assert "separate tool turn" in prompt
+    assert "relative filename" in prompt
+
+
+def test_tool_protocol_prevents_writing_the_workspace_directory():
+    module = _load_module()
+
+    assert "Never create it" in module.TOOL_PROTOCOL_PROMPT
+    assert "exactly index.html, styles.css, or app.js" in module.TOOL_PROTOCOL_PROMPT
+    assert "Include non-empty content" in module.TOOL_PROTOCOL_PROMPT
+    assert "700 output tokens" in module.TOOL_PROTOCOL_PROMPT
 
 
 def test_models_config_sets_temperature_to_point_seven(tmp_path):
