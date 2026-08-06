@@ -26,6 +26,11 @@ and native runtime files are required by interactive Pi features. The archive SH
 The checked-in `web_tasks_4096.jsonl` contains 4096 independently specified product and interface design tasks. It is
 the source dataset; no combinatorial dataset generator is included.
 
+`web_tasks_4096_simpler.jsonl` is a moderately easier curriculum with the same 4096 distinct domain/page
+combinations. Each task keeps its information architecture, visual direction, responsive requirement, and two real
+interactions, while reducing the original three-to-four interaction load and full state matrix. It is still intended
+for functional HTML/CSS/JavaScript generation rather than static mockups.
+
 Configure the external multimodal judge and train:
 
 ```bash
