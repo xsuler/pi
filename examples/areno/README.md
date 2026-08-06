@@ -31,6 +31,20 @@ combinations. Each task keeps its information architecture, visual direction, re
 interactions, while reducing the original three-to-four interaction load and full state matrix. It is still intended
 for functional HTML/CSS/JavaScript generation rather than static mockups.
 
+`web_tasks_4096_stage1.jsonl` contains 4096 fully expanded introductory tasks. Each asks for one compact responsive
+page with three labeled values and one button-driven status update. Use `reward_stage1.py` for this stage; it performs
+deterministic file, HTML, CSS, JavaScript, local-reference, and interaction checks without Chromium or an external
+judge:
+
+```bash
+areno train \
+  --dataset-path /path/to/pi/examples/areno/web_tasks_4096_stage1.jsonl \
+  --dataset-loader-fn /path/to/pi/examples/areno/dataset_loader.py \
+  --agent-fn /path/to/pi/examples/areno/run_agent.py \
+  --reward-fn-path /path/to/pi/examples/areno/reward_stage1.py \
+  ...
+```
+
 Configure the external multimodal judge and train:
 
 ```bash

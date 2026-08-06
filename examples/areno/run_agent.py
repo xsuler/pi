@@ -245,6 +245,12 @@ def _text(content: Any) -> str:
 
 
 def _prompt(item) -> str:
+    if item.record.get("stage") == 1:
+        return (
+            f"{item.prompt}\nCreate exactly three compact files: index.html, styles.css, and app.js. "
+            "Write each file separately using its relative filename. Keep the implementation simple and complete, "
+            "then give a concise final answer."
+        )
     return (
         f"{item.prompt}\nCreate exactly three complete files in the current directory: index.html, styles.css, and "
         "app.js. Build a polished responsive implementation of the design brief with all requested interactions and "

@@ -153,6 +153,17 @@ def test_generated_files_must_all_exist_and_be_nonempty(tmp_path):
     module._validate_generated_files(tmp_path)
 
 
+def test_stage_one_prompt_requests_compact_separate_files():
+    module = _load_module()
+    item = types.SimpleNamespace(prompt="Build a simple stock list.", record={"stage": 1})
+
+    prompt = module._prompt(item)
+
+    assert "three compact files" in prompt
+    assert "Write each file separately" in prompt
+    assert "polished responsive implementation" not in prompt
+
+
 def test_events_report_pi_model_error_message():
     module = _load_module()
     lines = [
