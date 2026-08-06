@@ -107,11 +107,22 @@ def _write_models(agent_dir: Path, base_url: str, api_key: str) -> None:
                 "apiKey": api_key,
                 "compat": {
                     "supportsStreaming": False,
+                    "supportsStore": False,
                     "supportsDeveloperRole": False,
                     "supportsReasoningEffort": False,
+                    "supportsUsageInStreaming": False,
+                    "supportsStrictMode": False,
                     "maxTokensField": "max_tokens",
                 },
-                "models": [{"id": "policy", "name": "AReno Policy"}],
+                "models": [
+                    {
+                        "id": "policy",
+                        "name": "AReno Policy",
+                        "contextWindow": 128000,
+                        "maxTokens": 16384,
+                        "samplingParams": {"temperature": 1.0},
+                    }
+                ],
             }
         }
     }

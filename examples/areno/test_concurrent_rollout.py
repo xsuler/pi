@@ -120,5 +120,17 @@ def test_models_config_sets_temperature_to_one(tmp_path):
     module._write_models(tmp_path, "http://127.0.0.1:3000/v1", "test-key")
 
     config = json.loads((tmp_path / "models.json").read_text(encoding="utf-8"))
+    provider = config["providers"]["areno"]
     model = config["providers"]["areno"]["models"][0]
+    assert provider["compat"] == {
+        "supportsStreaming": False,
+        "supportsStore": False,
+        "supportsDeveloperRole": False,
+        "supportsReasoningEffort": False,
+        "supportsUsageInStreaming": False,
+        "supportsStrictMode": False,
+        "maxTokensField": "max_tokens",
+    }
+    assert model["contextWindow"] == 128000
+    assert model["maxTokens"] == 16384
     assert model["samplingParams"] == {"temperature": 1.0}

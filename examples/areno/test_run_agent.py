@@ -140,6 +140,20 @@ def test_training_explicitly_enables_every_builtin_pi_tool():
     assert module.ALL_PI_TOOLS.split(",") == ["read", "bash", "edit", "write", "grep", "find", "ls"]
 
 
+def test_adapter_and_single_rollout_use_identical_model_config(tmp_path):
+    adapter = _load_module()
+    rollout = _load_rollout_module()
+    adapter_dir = tmp_path / "adapter"
+    rollout_dir = tmp_path / "rollout"
+
+    adapter._write_models(adapter_dir, "http://127.0.0.1:3000/v1", "test-key")
+    rollout._write_models(rollout_dir, "http://127.0.0.1:3000/v1", "test-key")
+
+    adapter_config = json.loads((adapter_dir / "models.json").read_text(encoding="utf-8"))
+    rollout_config = json.loads((rollout_dir / "models.json").read_text(encoding="utf-8"))
+    assert adapter_config == rollout_config
+
+
 def test_generated_files_must_all_exist_and_be_nonempty(tmp_path):
     module = _load_module()
     (tmp_path / "index.html").write_text("<main>ok</main>", encoding="utf-8")

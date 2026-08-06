@@ -71,6 +71,10 @@ efficiency bonus for finishing in fewer assistant turns. Every reward call also 
 SVG under `/tmp/areno_html`; task IDs, process IDs, and random suffixes prevent concurrent ranks from overwriting one
 another.
 
+The adapter and both rollout diagnostics use the same Pi OpenAI-completions parameters: non-streaming requests,
+`model=policy`, `max_tokens=16384`, `temperature=1.0`, standard function tools without `strict`, and no explicit
+`tool_choice`. The AReno proxy selects tools with its model-native parser.
+
 Before training, run one real Pi rollout against an active AReno agentic proxy and inspect every assistant/tool event:
 
 ```bash
