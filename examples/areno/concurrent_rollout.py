@@ -140,7 +140,12 @@ async def _run_one(
             args.api_key,
             _training_prompt(prompt),
             cwd=workspace,
-            env={**os.environ, "PI_CODING_AGENT_DIR": agent_dir, "PI_OFFLINE": "1"},
+            env={
+                **os.environ,
+                "PI_CODING_AGENT_DIR": agent_dir,
+                "PI_OFFLINE": "1",
+                "PI_MAX_TURNS": "20",
+            },
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

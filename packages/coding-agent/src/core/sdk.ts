@@ -35,6 +35,16 @@ import {
 // provider-agnostic and does not import pi-ai/compat itself.
 setDefaultStreamFn(streamSimple);
 
+function maxTurnsFromEnvironment(): number | undefined {
+	const raw = process.env.PI_MAX_TURNS;
+	if (raw === undefined || raw === "") return undefined;
+	const value = Number(raw);
+	if (!Number.isInteger(value) || value < 1) {
+		throw new Error(`PI_MAX_TURNS must be a positive integer, got ${JSON.stringify(raw)}`);
+	}
+	return value;
+}
+
 export interface CreateAgentSessionOptions {
 	/** Working directory for project-local discovery. Default: process.cwd() */
 	cwd?: string;
@@ -290,6 +300,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	};
 
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
+	const maxTurns = maxTurnsFromEnvironment();
+	let completedTurns = 0;
 
 	agent = new Agent({
 		initialState: {
@@ -299,6 +311,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			tools: [],
 		},
 		convertToLlm: convertToLlmWithBlockImages,
+		shouldStopAfterTurn:
+			maxTurns === undefined
+				? undefined
+				: () => {
+						completedTurns++;
+						return completedTurns >= maxTurns;
+					},
 		streamFn: async (model, context, options) => {
 			const providerRetrySettings = settingsManager.getProviderRetrySettings();
 			const httpIdleTimeoutMs = settingsManager.getHttpIdleTimeoutMs();

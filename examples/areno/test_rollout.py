@@ -56,7 +56,12 @@ def main() -> int:
         result = subprocess.run(
             command,
             cwd=workspace,
-            env={**os.environ, "PI_CODING_AGENT_DIR": agent_dir, "PI_OFFLINE": "1"},
+            env={
+                **os.environ,
+                "PI_CODING_AGENT_DIR": agent_dir,
+                "PI_OFFLINE": "1",
+                "PI_MAX_TURNS": "20",
+            },
             capture_output=True,
             text=True,
             timeout=args.timeout,

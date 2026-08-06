@@ -109,7 +109,12 @@ async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> 
         ctx.api_key,
         prompt,
         cwd=workspace,
-        env={**os.environ, "PI_CODING_AGENT_DIR": agent_dir, "PI_OFFLINE": "1"},
+        env={
+            **os.environ,
+            "PI_CODING_AGENT_DIR": agent_dir,
+            "PI_OFFLINE": "1",
+            "PI_MAX_TURNS": "20",
+        },
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
