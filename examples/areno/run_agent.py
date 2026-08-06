@@ -23,36 +23,29 @@ async def run_agent(ctx, batch) -> AgentTrajectory:
     for item in items:
         item.record = dict(item.record)
     semaphore = asyncio.Semaphore(ctx.max_running_prompts)
-    workspaces = []
-    try:
-        for item in items:
-            workspaces.append(await asyncio.to_thread(_empty_workspace, item))
-    except BaseException:
-        for workspace in workspaces:
-            _discard_workspace(workspace)
-        raise
-    roots = [workspace.root.resolve() for workspace in workspaces]
-    if len(set(roots)) != len(roots):
-        for workspace in workspaces:
-            _discard_workspace(workspace)
-        raise RuntimeError("Pi agent records must use distinct workspaces")
 
-    async def run_one(item, workspace):
+    async def run_one(item):
         async with semaphore:
+            workspace = None
             try:
+                workspace = await asyncio.to_thread(_empty_workspace, item)
                 return await _run_item(ctx, item, workspace)
+            except BaseException:
+                if workspace is not None:
+                    _discard_workspace(workspace)
+                raise
             finally:
-                workspace.close()
+                if workspace is not None:
+                    workspace.close()
 
     results = await asyncio.gather(
-        *(run_one(item, workspace) for item, workspace in zip(items, workspaces, strict=True)),
+        *(run_one(item) for item in items),
         return_exceptions=True,
     )
     valid_turns = []
     invalid_items = []
-    for item, workspace, result in zip(items, workspaces, results, strict=True):
+    for item, result in zip(items, results, strict=True):
         if isinstance(result, BaseException):
-            _discard_workspace(workspace)
             invalid_items.append(item)
             logger.warning(
                 "filtering invalid Pi rollout prompt_index=%s sample_index=%s error=%s",

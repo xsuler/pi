@@ -178,12 +178,15 @@ def test_run_agent_isolates_workspace_per_expanded_record(tmp_path):
         return []
 
     shared_record = {"id": "task-1", "files": {"README.md": "seed"}}
-    items = [types.SimpleNamespace(record=shared_record), types.SimpleNamespace(record=shared_record)]
+    items = [
+        types.SimpleNamespace(record=shared_record, sample_index=0),
+        types.SimpleNamespace(record=shared_record, sample_index=1),
+    ]
     batch = types.SimpleNamespace(iter_samples=lambda: iter(items))
     ctx = types.SimpleNamespace(max_running_prompts=2)
     module.CodingWorkspace = Workspace
     def empty_workspace(item):
-        workspace = Workspace(dict(item.record), tmp_path / f"sample-{len(created)}")
+        workspace = Workspace(dict(item.record), tmp_path / f"sample-{item.sample_index}")
         created.append(workspace)
         return workspace
 
@@ -212,7 +215,7 @@ def test_run_agent_filters_only_failed_sample_workspaces(tmp_path):
             pass
 
     def empty_workspace(item):
-        workspace = Workspace(dict(item.record), tmp_path / f"sample-{len(created)}")
+        workspace = Workspace(dict(item.record), tmp_path / f"sample-{item.sample_index}")
         workspace.root.mkdir()
         created.append(workspace)
         return workspace
