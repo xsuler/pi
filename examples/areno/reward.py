@@ -182,9 +182,19 @@ def _judge(png: bytes, files: dict[str, str], prompt: str) -> tuple[float, float
         f"--- {name} ---\n{files[name][:200_000]}" for name in REQUIRED_FILES
     )
     rubric = (
-        "Evaluate a generated web implementation using two distinct evidence tracks. Return JSON only with numeric "
+        "Act as a strict senior product-design and frontend-quality reviewer. Evaluate the generated web implementation "
+        "against professional production standards, not beginner-demo standards. Do not reward effort, intent, or the "
+        "mere presence of requested elements. Return JSON only with numeric "
         'fields "html_quality", "functional_completeness", "visual_alignment", and "visual_aesthetics", each from '
         "0 to 10.\n\n"
+        "SCORING STANDARD: 5 means minimally acceptable but visibly ordinary or incomplete; 6 means competent with "
+        "several clear weaknesses; 7 means strong and usable but still has noticeable deficiencies; 8 means polished, "
+        "complete, and professional with only minor issues; 9 means exceptional and highly specific with virtually no "
+        "meaningful defect; 10 is reserved for outstanding work that could ship unchanged. Most generated pages should "
+        "score between 3 and 7. Use the full range and do not cluster scores near 8. Any missing requested interaction, "
+        "broken control, major overflow, overlap, inaccessible essential flow, generic template treatment, or substantial "
+        "brief mismatch must cap the affected category at 5. A page that merely renders and contains the named sections "
+        "must not score above 6.\n\n"
         "HTML QUALITY PRINCIPLES (judge the supplied HTML/CSS/JS source, not the screenshot): valid and meaningful "
         "semantic structure; coherent responsive CSS; accessible labels, focus states, contrast intent, and keyboard "
         "affordances; functional JavaScript interactions; realistic states and content; maintainability; no external "
@@ -198,6 +208,8 @@ def _judge(png: bytes, files: dict[str, str], prompt: str) -> tuple[float, float
         "VISUAL AESTHETICS PRINCIPLES (judge only the rendered image): hierarchy, typography, spacing, balance, contrast, "
         "color coherence, polish, and absence of overlap, clipping, generic template styling, or excessive decoration. "
         "The image is the rendered 1440x1024 first viewport.\n\n"
+        "Before assigning scores, identify concrete defects internally and lower each category for every relevant defect. "
+        "Do not mention that analysis in the response; output only the required JSON object.\n\n"
         f"DESIGN BRIEF:\n{prompt}\n\nSOURCE FILES:\n{source}"
     )
     payload = {
