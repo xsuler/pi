@@ -20,6 +20,7 @@ TOOL_PROTOCOL_PROMPT = """When creating the requested page, follow this tool pro
 - The working directory already exists. Never create it and never pass the working-directory path to write.
 - Call write once per turn with a relative path that is exactly index.html, styles.css, or app.js.
 - Include non-empty content in every write call. Keep each file compact enough to fit within 700 output tokens.
+- Never run rm, rm -rf, or rmdir on the workspace or any created file. Leave all three required files in place.
 - Finish all three files before replying with final text. If a tool fails, correct its arguments instead of repeating them."""
 
 

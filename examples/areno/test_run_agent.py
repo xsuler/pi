@@ -161,7 +161,19 @@ def test_stage_one_prompt_requests_compact_separate_files():
 
     assert "three compact files" in prompt
     assert "Write each file separately" in prompt
+    assert "Never run rm, rm -rf, or rmdir" in prompt
+    assert "leave all three required files present" in prompt
     assert "polished responsive implementation" not in prompt
+
+
+def test_standard_prompt_forbids_removing_generated_files():
+    module = _load_module()
+    item = types.SimpleNamespace(prompt="Build a dashboard.", record={})
+
+    prompt = module._prompt(item)
+
+    assert "Never run rm, rm -rf, or rmdir" in prompt
+    assert "leave all three required files present" in prompt
 
 
 def test_events_report_pi_model_error_message():

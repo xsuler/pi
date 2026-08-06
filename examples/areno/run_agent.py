@@ -249,13 +249,17 @@ def _prompt(item) -> str:
         return (
             f"{item.prompt}\nCreate exactly three compact files: index.html, styles.css, and app.js. "
             "Write each file separately using its relative filename. Keep the implementation simple and complete, "
-            "then give a concise final answer."
+            "then give a concise final answer. Never run rm, rm -rf, or rmdir on the workspace or any file you "
+            "create. Once a required file exists, only use read, edit, or write to correct it; leave all three "
+            "required files present when you finish."
         )
     return (
         f"{item.prompt}\nCreate exactly three complete files in the current directory: index.html, styles.css, and "
         "app.js. Build a polished responsive implementation of the design brief with all requested interactions and "
         "persisted state where relevant. Do not load external resources. Use Pi's tools to inspect the directory and "
-        "write the files, then give a concise final answer."
+        "write the files, then give a concise final answer. Never run rm, rm -rf, or rmdir on the workspace or any "
+        "file you create. Once a required file exists, only use read, edit, or write to correct it; leave all three "
+        "required files present when you finish."
     )
 
 

@@ -99,6 +99,7 @@ def test_tool_protocol_prevents_writing_the_workspace_directory():
     assert "exactly index.html, styles.css, or app.js" in module.TOOL_PROTOCOL_PROMPT
     assert "Include non-empty content" in module.TOOL_PROTOCOL_PROMPT
     assert "700 output tokens" in module.TOOL_PROTOCOL_PROMPT
+    assert "Never run rm, rm -rf, or rmdir" in module.TOOL_PROTOCOL_PROMPT
 
 
 def test_deleted_workspace_reports_missing_files_without_recreating_it(tmp_path):
