@@ -83,6 +83,7 @@ def _validate_generated_files(workspace: Path) -> None:
 
 
 async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> list[str]:
+    max_turns = _max_turns()
     process = await asyncio.create_subprocess_exec(
         str(_pi_binary()),
         "--mode",
@@ -107,13 +108,43 @@ async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> 
             **os.environ,
             "PI_CODING_AGENT_DIR": agent_dir,
             "PI_OFFLINE": "1",
-            "PI_MAX_TURNS": "20",
+            "PI_MAX_TURNS": str(max_turns),
         },
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+    lines: list[str] = []
+
+    async def read_stdout() -> None:
+        completed_turns = 0
+        while True:
+            raw = await process.stdout.readline()
+            if not raw:
+                return
+            line = raw.decode(errors="replace").rstrip("\r\n")
+            lines.append(line)
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") != "turn_end":
+                continue
+            completed_turns += 1
+            if completed_turns >= max_turns and process.returncode is None:
+                logger.info("stopping Pi rollout after max turns=%s workspace=%s", max_turns, workspace)
+                process.terminate()
+                return
+
     try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=900)
+        stderr_task = asyncio.create_task(process.stderr.read())
+        await asyncio.wait_for(read_stdout(), timeout=900)
+        await asyncio.wait_for(process.wait(), timeout=10)
+        stderr = await stderr_task
+    except asyncio.TimeoutError:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+        raise RuntimeError("Pi rollout exceeded its execution timeout")
     except BaseException:
         if process.returncode is None:
             process.terminate()
@@ -123,9 +154,20 @@ async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> 
                 process.kill()
                 await process.wait()
         raise
-    if process.returncode != 0:
+    if process.returncode not in (0, -15):
         raise RuntimeError(f"Pi exited with {process.returncode}: {stderr.decode(errors='replace')[-4000:]}")
-    return stdout.decode(errors="replace").splitlines()
+    return lines
+
+
+def _max_turns() -> int:
+    raw = os.environ.get("PI_MAX_TURNS", "20")
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"PI_MAX_TURNS must be a positive integer, got {raw!r}") from exc
+    if value < 1:
+        raise ValueError(f"PI_MAX_TURNS must be a positive integer, got {raw!r}")
+    return value
 
 
 def _events_to_turns(item, lines: list[str]) -> list[AgentTrajectoryTurn]:
