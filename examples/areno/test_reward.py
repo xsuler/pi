@@ -99,10 +99,10 @@ def test_judge_sends_png_data_url(monkeypatch):
 
         def read(self):
             return json.dumps({"choices": [{"message": {"content": json.dumps({
-                "html_quality": 8,
-                "functional_completeness": 7,
-                "visual_alignment": 6,
-                "visual_aesthetics": 5,
+                "html_quality": [8] * 7,
+                "functional_completeness": [7] * 8,
+                "visual_alignment": [6] * 7,
+                "visual_aesthetics": [5] * 10,
             })}}]}).encode()
 
     def fake_urlopen(request, timeout):
@@ -115,3 +115,33 @@ def test_judge_sends_png_data_url(monkeypatch):
 
     image_url = captured["messages"][0]["content"][1]["image_url"]["url"]
     assert image_url.startswith("data:image/png;base64,")
+
+
+def test_rubric_mean_requires_every_individual_score():
+    reward = _load_reward_module()
+
+    scores = {"html_quality": [4, 5, 6, 7, 8, 9, 10]}
+    assert reward._rubric_mean(scores, "html_quality") == 7
+
+    try:
+        reward._rubric_mean({"html_quality": [8]}, "html_quality")
+    except ValueError as exc:
+        assert "exactly 7" in str(exc)
+    else:
+        raise AssertionError("incomplete rubric scores were accepted")
+
+
+def test_judge_score_calibration_is_discriminative():
+    reward = _load_reward_module()
+
+    assert reward._calibrate_judge_scores(5, 5, 5, 5) == 0
+    assert reward._calibrate_judge_scores(8, 8, 8, 8) == 0.6
+    assert reward._calibrate_judge_scores(3, 3, 3, 3) == -0.4
+
+
+def test_judge_score_calibration_penalizes_weakest_dimension():
+    reward = _load_reward_module()
+
+    balanced = reward._calibrate_judge_scores(7, 7, 7, 7)
+    weak_functionality = reward._calibrate_judge_scores(8, 2, 8, 8)
+    assert weak_functionality < balanced

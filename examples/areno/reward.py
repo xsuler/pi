@@ -16,6 +16,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 REQUIRED_FILES = ("index.html", "styles.css", "app.js")
+RUBRIC_COUNTS = {
+    "html_quality": 7,
+    "functional_completeness": 8,
+    "visual_alignment": 7,
+    "visual_aesthetics": 10,
+}
 logger = logging.getLogger(__name__)
 
 
@@ -40,13 +46,27 @@ def reward_fn(record) -> float:
             shutil.rmtree(workspace, ignore_errors=True)
     turns = max(sum(event.type == "request" for event in record.trace), 1)
     efficiency = 1.0 / turns
-    judged_score = (
+    judged_score = _calibrate_judge_scores(html_quality, functionality, alignment, aesthetics)
+    return max(-1.0, min(1.0, 0.95 * judged_score + 0.05 * efficiency))
+
+
+def _calibrate_judge_scores(
+    html_quality: float,
+    functionality: float,
+    alignment: float,
+    aesthetics: float,
+) -> float:
+    scores = (html_quality, functionality, alignment, aesthetics)
+    weighted = (
         0.20 * html_quality
         + 0.25 * functionality
         + 0.30 * alignment
         + 0.25 * aesthetics
-    ) / 10.0
-    return max(-1.0, min(1.0, 0.9 * judged_score + 0.1 * efficiency))
+    )
+    # A severe weakness should remain visible instead of being hidden by three
+    # generous category scores. Five is the neutral professional threshold.
+    adjusted = weighted - 0.25 * (weighted - min(scores))
+    return max(-1.0, min(1.0, (adjusted - 5.0) / 5.0))
 
 
 def _record_workspace(record) -> Path | None:
@@ -184,9 +204,10 @@ def _judge(png: bytes, files: dict[str, str], prompt: str) -> tuple[float, float
     rubric = (
         "Act as a strict senior product-design and frontend-quality reviewer. Evaluate the generated web implementation "
         "against professional production standards, not beginner-demo standards. Do not reward effort, intent, or the "
-        "mere presence of requested elements. Return JSON only with numeric "
-        'fields "html_quality", "functional_completeness", "visual_alignment", and "visual_aesthetics", each from '
-        "0 to 10.\n\n"
+        "mere presence of requested elements. Score every numbered checklist item independently from 0 to 10. Return "
+        'JSON only with four arrays named "html_quality", "functional_completeness", "visual_alignment", and '
+        '"visual_aesthetics". The arrays must contain exactly 7, 8, 7, and 10 numeric scores respectively, in the same '
+        "order as the numbered checklist items. Do not return category totals, prose, explanations, or extra fields.\n\n"
         "SCORING STANDARD: 5 means minimally acceptable but visibly ordinary or incomplete; 6 means competent with "
         "several clear weaknesses; 7 means strong and usable but still has noticeable deficiencies; 8 means polished, "
         "complete, and professional with only minor issues; 9 means exceptional and highly specific with virtually no "
@@ -195,21 +216,40 @@ def _judge(png: bytes, files: dict[str, str], prompt: str) -> tuple[float, float
         "broken control, major overflow, overlap, inaccessible essential flow, generic template treatment, or substantial "
         "brief mismatch must cap the affected category at 5. A page that merely renders and contains the named sections "
         "must not score above 6.\n\n"
-        "HTML QUALITY PRINCIPLES (judge the supplied HTML/CSS/JS source, not the screenshot): valid and meaningful "
-        "semantic structure; coherent responsive CSS; accessible labels, focus states, contrast intent, and keyboard "
-        "affordances; functional JavaScript interactions; realistic states and content; maintainability; no external "
-        "network dependencies, embedded raster assets, unsafe scripts, or implementation narration.\n\n"
-        "FUNCTIONAL COMPLETENESS PRINCIPLES (judge source against the brief): every requested interaction must have "
-        "real event handling and visible state feedback; controls must not be decorative shells; navigation, filters, "
-        "dialogs, forms, validation, toggles, and state transitions requested by the brief must form usable end-to-end "
-        "flows; loading, empty, error, and success states should be represented where relevant.\n\n"
-        "VISUAL ALIGNMENT PRINCIPLES (judge the rendered image against the brief): required information architecture, "
-        "content, controls, page density, domain specificity, and interaction affordances must be visibly represented.\n\n"
-        "VISUAL AESTHETICS PRINCIPLES (judge only the rendered image): hierarchy, typography, spacing, balance, contrast, "
-        "color coherence, polish, and absence of overlap, clipping, generic template styling, or excessive decoration. "
-        "The image is the rendered 1440x1024 first viewport.\n\n"
-        "Before assigning scores, identify concrete defects internally and lower each category for every relevant defect. "
-        "Do not mention that analysis in the response; output only the required JSON object.\n\n"
+        "HTML QUALITY CHECKLIST (judge source, not appearance): (1) valid document structure and correct asset wiring; "
+        "(2) semantic landmarks, heading order, native controls, labels, and useful ARIA only where needed; (3) complete "
+        "keyboard operation and clearly visible focus states; (4) responsive CSS with deliberate breakpoints, stable "
+        "sizing, no brittle absolute positioning, and coherent 390px behavior; (5) maintainable organization, reusable "
+        "tokens, readable naming, and no needless duplication; (6) robust JavaScript without inline-handler sprawl, "
+        "missing-element crashes, unsafe HTML insertion, or accidental globals; (7) no external network dependencies, "
+        "embedded raster payloads, implementation narration, placeholder content, or suspicious code. Deduct for every "
+        "concrete source defect. Invalid markup, inaccessible essential controls, or fragile nonresponsive construction "
+        "caps html_quality at 5.\n\n"
+        "FUNCTIONAL COMPLETENESS CHECKLIST (judge source against every sentence of the brief): (1) inventory all explicit "
+        "and implied required controls; (2) verify each control has a real event path and visible feedback; (3) verify "
+        "state transitions update all dependent UI, not only button text; (4) verify forms validate input and support "
+        "keyboard submission; (5) verify requested persistence is real and safely restored; (6) verify navigation, tabs, "
+        "filters, dialogs, drag/drop, charts, and destructive actions work end to end where requested; (7) verify realistic "
+        "loading, empty, error, disabled, and success states where relevant; (8) reject decorative controls and hard-coded "
+        "fake outcomes. One missing primary interaction caps functional_completeness at 5; two or more cap it at 3. A "
+        "static page with controls that do not work scores at most 2.\n\n"
+        "VISUAL ALIGNMENT CHECKLIST (judge rendered image against the brief): (1) exact requested page type and information "
+        "architecture; (2) all required first-viewport content and controls; (3) correct density and scanning order; (4) "
+        "domain-specific labels, values, entities, and states rather than generic dashboard copy; (5) requested visual "
+        "direction, palette, tone, and component character; (6) visible affordances for required interactions; (7) no "
+        "forbidden patterns from the brief. Generic SaaS substitution, missing primary content, or a materially different "
+        "layout caps visual_alignment at 5.\n\n"
+        "VISUAL AESTHETICS CHECKLIST (judge only the rendered 1440x1024 image): (1) clear hierarchy and intentional focal "
+        "point; (2) disciplined type scale, line length, weight, and alignment; (3) consistent spacing rhythm and grid; "
+        "(4) balanced use of whitespace without empty or overcrowded regions; (5) legible contrast and restrained, coherent "
+        "color; (6) polished controls and consistent states; (7) sensible borders, radii, shadows, and icon treatment; "
+        "(8) no overlap, clipping, truncation, accidental scroll, unstable wrapping, or off-canvas content; (9) specificity "
+        "and visual authorship rather than default browser styling or a generic template; (10) cohesive composition at the "
+        "captured viewport. Any major layout break caps visual_aesthetics at 4. Default-looking but clean work scores at "
+        "most 6. Repetition of cards, excessive rounding, weak contrast, or arbitrary decoration must reduce the score.\n\n"
+        "Before assigning scores, identify concrete defects internally and lower every affected checklist item. Apply all "
+        "stated caps to the relevant item scores. Do not mention that analysis in the response; output only the required "
+        "JSON object containing the four score arrays.\n\n"
         f"DESIGN BRIEF:\n{prompt}\n\nSOURCE FILES:\n{source}"
     )
     payload = {
@@ -233,11 +273,21 @@ def _judge(png: bytes, files: dict[str, str], prompt: str) -> tuple[float, float
     match = re.search(r"\{[\s\S]*\}", content)
     scores = json.loads(match.group(0) if match else content)
     return (
-        _bounded(scores.get("html_quality")),
-        _bounded(scores.get("functional_completeness")),
-        _bounded(scores.get("visual_alignment")),
-        _bounded(scores.get("visual_aesthetics")),
+        _rubric_mean(scores, "html_quality"),
+        _rubric_mean(scores, "functional_completeness"),
+        _rubric_mean(scores, "visual_alignment"),
+        _rubric_mean(scores, "visual_aesthetics"),
     )
+
+
+def _rubric_mean(scores: Any, name: str) -> float:
+    if not isinstance(scores, dict):
+        raise ValueError("judge response must be a JSON object")
+    values = scores.get(name)
+    expected = RUBRIC_COUNTS[name]
+    if not isinstance(values, list) or len(values) != expected:
+        raise ValueError(f"judge field {name!r} must contain exactly {expected} scores")
+    return sum(_bounded(value) for value in values) / expected
 
 
 def _bounded(value: Any) -> float:
