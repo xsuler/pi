@@ -77,7 +77,8 @@ python examples/areno/concurrent_rollout.py \
   --binary "$PI_ARENO_BINARY"
 ```
 
-All workspaces, Pi JSONL events, and stderr logs are retained under `/tmp/pi-concurrent-rollout/<run-id>/`.
+All workspaces are retained under `/tmp/pi-concurrent-rollout/<run-id>/`. Pi JSONL events and stderr are written to
+the sibling `logs/` directory, so diagnostics survive even when a rollout deletes its own workspace.
 
 The judge receives both the complete HTML/CSS/JS source and the rendered SVG. Source quality is scored for semantic
 structure, responsive behavior, accessibility, validity, and self-containment. Functional completeness is scored

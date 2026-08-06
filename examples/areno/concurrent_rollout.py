@@ -28,6 +28,7 @@ class Result:
     prompt_index: int
     sample_index: int
     workspace: Path
+    event_log: Path
     returncode: int
     elapsed_s: float
     trainable_turns: int
@@ -57,6 +58,8 @@ async def main_async(args: argparse.Namespace) -> int:
         time.strftime("%Y%m%d-%H%M%S") + f"-{uuid.uuid4().hex[:6]}"
     )
     run_root.mkdir(parents=True)
+    log_root = run_root / "logs"
+    log_root.mkdir()
     jobs = [
         (prompt_index, sample_index, prompt)
         for prompt_index, prompt in enumerate(prompts)
@@ -71,7 +74,7 @@ async def main_async(args: argparse.Namespace) -> int:
 
     async def run_job(prompt_index: int, sample_index: int, prompt: str) -> Result:
         async with semaphore:
-            return await _run_one(args, binary, run_root, prompt_index, sample_index, prompt)
+            return await _run_one(args, binary, run_root, log_root, prompt_index, sample_index, prompt)
 
     results = await asyncio.gather(*(run_job(*job) for job in jobs))
     for result in results:
@@ -80,7 +83,7 @@ async def main_async(args: argparse.Namespace) -> int:
             f"[{result.prompt_index}:{result.sample_index}] valid={result.valid} rc={result.returncode} "
             f"elapsed={result.elapsed_s:.2f}s turns={result.trainable_turns} calls={result.tool_calls} "
             f"results={result.tool_results} tool_errors={result.tool_errors} files=({sizes}) "
-            f"workspace={result.workspace}"
+            f"workspace={result.workspace} events={result.event_log}"
         )
         if not result.valid:
             if result.last_text:
@@ -103,12 +106,14 @@ async def _run_one(
     args: argparse.Namespace,
     binary: Path,
     run_root: Path,
+    log_root: Path,
     prompt_index: int,
     sample_index: int,
     prompt: str,
 ) -> Result:
     workspace = run_root / f"prompt-{prompt_index:04d}-sample-{sample_index:02d}"
     workspace.mkdir()
+    log_prefix = log_root / f"prompt-{prompt_index:04d}-sample-{sample_index:02d}"
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="pi-areno-config-") as agent_dir:
         _write_models(Path(agent_dir), args.base_url, args.api_key)
@@ -146,15 +151,15 @@ async def _run_one(
             stderr += b"\nconcurrent rollout timed out"
     events = _parse_events(stdout.decode(errors="replace").splitlines())
     summary = _summarize(events)
-    sizes = {
-        name: (workspace / name).stat().st_size if (workspace / name).is_file() else 0 for name in REQUIRED_FILES
-    }
-    (workspace / "pi-events.jsonl").write_bytes(stdout)
-    (workspace / "pi-stderr.log").write_bytes(stderr)
+    sizes = _generated_file_sizes(workspace)
+    event_log = log_prefix.with_suffix(".events.jsonl")
+    event_log.write_bytes(stdout)
+    log_prefix.with_suffix(".stderr.log").write_bytes(stderr)
     return Result(
         prompt_index=prompt_index,
         sample_index=sample_index,
         workspace=workspace,
+        event_log=event_log,
         returncode=int(process.returncode or 0),
         elapsed_s=time.monotonic() - started,
         trainable_turns=summary["trainable_turns"],
@@ -186,6 +191,12 @@ def _summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
             result["tool_results"] += 1
             result["tool_errors"] += bool(message.get("isError"))
     return result
+
+
+def _generated_file_sizes(workspace: Path) -> dict[str, int]:
+    return {
+        name: (workspace / name).stat().st_size if (workspace / name).is_file() else 0 for name in REQUIRED_FILES
+    }
 
 
 def _parse_events(lines: list[str]) -> list[dict[str, Any]]:

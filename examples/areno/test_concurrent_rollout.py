@@ -101,6 +101,18 @@ def test_tool_protocol_prevents_writing_the_workspace_directory():
     assert "700 output tokens" in module.TOOL_PROTOCOL_PROMPT
 
 
+def test_deleted_workspace_reports_missing_files_without_recreating_it(tmp_path):
+    module = _load_module()
+    workspace = tmp_path / "deleted-workspace"
+
+    assert module._generated_file_sizes(workspace) == {
+        "index.html": 0,
+        "styles.css": 0,
+        "app.js": 0,
+    }
+    assert not workspace.exists()
+
+
 def test_models_config_sets_temperature_to_point_seven(tmp_path):
     module = _load_module()
 
