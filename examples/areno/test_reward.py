@@ -17,131 +17,94 @@ def _load_reward_module():
     return module
 
 
-def test_extract_files_accepts_absolute_isolated_workspace_paths():
-    reward = _load_reward_module()
-    record = types.SimpleNamespace(
-        tool_calls=[
-            {
-                "name": "write",
-                "arguments": json.dumps(
-                    {"path": "/tmp/areno-coding-a1/index.html", "content": "<main>ok</main>"}
-                ),
-            },
-            {
-                "name": "write",
-                "arguments": {"path": "/tmp/areno-coding-a1/styles.css", "content": "main { display: block; }"},
-            },
-            {
-                "name": "write",
-                "arguments": {"path": "/tmp/areno-coding-a1/app.js", "content": "console.log('ok');"},
-            },
-        ]
-    )
+def _svg(index: int) -> str:
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'
+            f'<circle cx="{64 + index * 20}" cy="256" r="40"/></svg>')
 
-    assert set(reward._extract_files(record)) == {"index.html", "styles.css", "app.js"}
+
+def test_extract_files_accepts_absolute_frame_paths():
+    reward = _load_reward_module()
+    record = types.SimpleNamespace(tool_calls=[
+        {"name": "write", "arguments": {"path": f"/tmp/areno-coding-a1/frame-{i:02d}.svg", "content": _svg(i)}}
+        for i in range(8)
+    ])
+    assert tuple(sorted(reward._extract_files(record))) == reward.REQUIRED_FILES
 
 
 def test_extract_files_uses_last_write_and_rejects_nested_relative_paths():
     reward = _load_reward_module()
-    record = types.SimpleNamespace(
-        tool_calls=[
-            {"name": "write", "arguments": {"path": "index.html", "content": "first"}},
-            {"name": "write", "arguments": {"path": "index.html", "content": "final"}},
-            {"name": "write", "arguments": {"path": "nested/styles.css", "content": "wrong location"}},
-        ]
-    )
-
-    assert reward._extract_files(record) == {"index.html": "final"}
+    record = types.SimpleNamespace(tool_calls=[
+        {"name": "write", "arguments": {"path": "frame-00.svg", "content": "first"}},
+        {"name": "write", "arguments": {"path": "frame-00.svg", "content": "final"}},
+        {"name": "write", "arguments": {"path": "nested/frame-01.svg", "content": "wrong"}},
+    ])
+    assert reward._extract_files(record) == {"frame-00.svg": "final"}
 
 
-def test_reward_reads_final_workspace_and_cleans_it(monkeypatch):
+def test_reward_reads_workspace_and_cleans_it(monkeypatch):
     reward = _load_reward_module()
     workspace = Path(tempfile.mkdtemp(prefix="areno-coding-"))
-    (workspace / "index.html").write_text("<main>final</main>", encoding="utf-8")
-    (workspace / "styles.css").write_text("main { display: block; }", encoding="utf-8")
-    (workspace / "app.js").write_text("console.log('final');", encoding="utf-8")
-    record = types.SimpleNamespace(
-        source_record={"id": "task-1", "_pi_workspace": str(workspace)},
-        prompt="Build a page",
-        trace=[types.SimpleNamespace(type="request")],
-        tool_calls=[],
-    )
-    captured = {}
-
-    def fake_render(files, sample_id):
-        captured.update(files)
-        assert sample_id == "task-1"
-        return b"\x89PNG\r\n\x1a\nrendered"
-
-    monkeypatch.setattr(reward, "_html_to_svg", fake_render)
+    for i, name in enumerate(reward.REQUIRED_FILES):
+        (workspace / name).write_text(_svg(i), encoding="utf-8")
+    record = types.SimpleNamespace(source_record={"id": "task-1", "_pi_workspace": str(workspace)},
+                                   prompt="Animate", trace=[types.SimpleNamespace(type="request")], tool_calls=[])
+    monkeypatch.setattr(reward, "_render_svg_frames", lambda files, sample_id: [b"\x89PNG\r\n\x1a\nframe"] * 8)
     monkeypatch.setattr(reward, "_judge", lambda *args: (8.0, 8.0, 8.0, 8.0))
-
-    score = reward.reward_fn(record)
-
-    assert score > 0
-    assert captured["index.html"] == "<main>final</main>"
+    assert reward.reward_fn(record) > 0
     assert not workspace.exists()
 
 
-def test_judge_sends_png_data_url(monkeypatch):
+def test_judge_sends_all_png_frames_in_order(monkeypatch):
     reward = _load_reward_module()
     monkeypatch.setenv("PI_ARENO_JUDGE_BASE_URL", "http://judge.test/v1")
-    monkeypatch.setenv("PI_ARENO_JUDGE_API_KEY", "test-key")
-    monkeypatch.setenv("PI_ARENO_JUDGE_MODEL", "vision-model")
+    monkeypatch.setenv("PI_ARENO_JUDGE_API_KEY", "key")
+    monkeypatch.setenv("PI_ARENO_JUDGE_MODEL", "vision")
     captured = {}
 
     class Response:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return None
-
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
         def read(self):
-            return json.dumps({"choices": [{"message": {"content": json.dumps({
-                "html_quality": [8] * 7,
-                "functional_completeness": [7] * 8,
-                "visual_alignment": [6] * 7,
-                "visual_aesthetics": [5] * 10,
-            })}}]}).encode()
+            scores = {name: [7] * count for name, count in reward.RUBRIC_COUNTS.items()}
+            return json.dumps({"choices": [{"message": {"content": json.dumps(scores)}}]}).encode()
 
     def fake_urlopen(request, timeout):
         captured.update(json.loads(request.data))
         return Response()
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    files = {name: "content" for name in reward.REQUIRED_FILES}
-    reward._judge(b"\x89PNG\r\n\x1a\nimage", files, "brief")
+    pngs = [b"\x89PNG\r\n\x1a\n" + bytes([i]) for i in range(8)]
+    reward._judge(pngs, {name: _svg(i) for i, name in enumerate(reward.REQUIRED_FILES)}, "brief")
+    content = captured["messages"][0]["content"]
+    assert [block["text"] for block in content if block["type"] == "text"][1:] == [f"Frame {i:02d} of 07" for i in range(8)]
+    assert len([block for block in content if block["type"] == "image_url"]) == 8
 
-    image_url = captured["messages"][0]["content"][1]["image_url"]["url"]
-    assert image_url.startswith("data:image/png;base64,")
 
-
-def test_rubric_mean_requires_every_individual_score():
+def test_rubric_mean_requires_every_score():
     reward = _load_reward_module()
-
-    scores = {"html_quality": [4, 5, 6, 7, 8, 9, 10]}
-    assert reward._rubric_mean(scores, "html_quality") == 7
-
+    assert reward._rubric_mean({"svg_quality": [7] * 8}, "svg_quality") == 7
     try:
-        reward._rubric_mean({"html_quality": [8]}, "html_quality")
+        reward._rubric_mean({"svg_quality": [7]}, "svg_quality")
     except ValueError as exc:
-        assert "exactly 7" in str(exc)
+        assert "exactly 8" in str(exc)
     else:
-        raise AssertionError("incomplete rubric scores were accepted")
+        raise AssertionError("incomplete rubric accepted")
 
 
 def test_judge_score_calibration_is_discriminative():
     reward = _load_reward_module()
-
     assert reward._calibrate_judge_scores(5, 5, 5, 5) == 0
     assert reward._calibrate_judge_scores(8, 8, 8, 8) == 0.6
     assert reward._calibrate_judge_scores(3, 3, 3, 3) == -0.4
 
 
-def test_judge_score_calibration_penalizes_weakest_dimension():
+def test_validate_svg_rejects_external_resources():
     reward = _load_reward_module()
-
-    balanced = reward._calibrate_judge_scores(7, 7, 7, 7)
-    weak_functionality = reward._calibrate_judge_scores(8, 2, 8, 8)
-    assert weak_functionality < balanced
+    reward._validate_svg(_svg(0), "frame-00.svg")
+    bad = _svg(0).replace("</svg>", '<image href="https://x/y.png"/></svg>')
+    try:
+        reward._validate_svg(bad, "frame-00.svg")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("external SVG resource accepted")

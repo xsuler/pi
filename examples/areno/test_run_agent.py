@@ -156,14 +156,14 @@ def test_adapter_and_single_rollout_use_identical_model_config(tmp_path):
 
 def test_generated_files_must_all_exist_and_be_nonempty(tmp_path):
     module = _load_module()
-    (tmp_path / "index.html").write_text("<main>ok</main>", encoding="utf-8")
-    (tmp_path / "styles.css").write_text("body{}", encoding="utf-8")
-    (tmp_path / "app.js").write_text("", encoding="utf-8")
+    for name in module.REQUIRED_FILES:
+        (tmp_path / name).write_text("<svg/>", encoding="utf-8")
+    (tmp_path / "frame-07.svg").write_text("", encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="app.js"):
+    with pytest.raises(RuntimeError, match="frame-07.svg"):
         module._validate_generated_files(tmp_path)
 
-    (tmp_path / "app.js").write_text("void 0;", encoding="utf-8")
+    (tmp_path / "frame-07.svg").write_text("<svg/>", encoding="utf-8")
     module._validate_generated_files(tmp_path)
 
 
@@ -173,11 +173,11 @@ def test_stage_one_prompt_requests_compact_separate_files():
 
     prompt = module._prompt(item)
 
-    assert "three compact files" in prompt
-    assert "Write each file separately" in prompt
+    assert "exactly 8 complete consecutive SVG files" in prompt
+    assert "use edit on any SVG" in prompt
+    assert "until every frame satisfies" in prompt
     assert "Never run rm, rm -rf, or rmdir" in prompt
-    assert "leave all three required files present" in prompt
-    assert "polished responsive implementation" not in prompt
+    assert "Leave all 8 files present" in prompt
 
 
 def test_standard_prompt_forbids_removing_generated_files():
@@ -187,7 +187,7 @@ def test_standard_prompt_forbids_removing_generated_files():
     prompt = module._prompt(item)
 
     assert "Never run rm, rm -rf, or rmdir" in prompt
-    assert "leave all three required files present" in prompt
+    assert "Leave all 8 files present" in prompt
 
 
 def test_events_report_pi_model_error_message():
@@ -296,14 +296,14 @@ def test_run_agent_preserves_failed_sample_workspaces(tmp_path):
 
 def test_rollout_summary_reports_tool_calls_and_generated_files(tmp_path, capsys):
     module = _load_rollout_module()
-    (tmp_path / "index.html").write_text("<main>ok</main>", encoding="utf-8")
+    (tmp_path / "frame-00.svg").write_text("<svg/>", encoding="utf-8")
     events = [
         {
             "type": "message_end",
             "message": {
                 "role": "assistant",
                 "stopReason": "toolUse",
-                "content": [{"type": "toolCall", "name": "write", "arguments": {"path": "index.html"}}],
+                    "content": [{"type": "toolCall", "name": "write", "arguments": {"path": "frame-00.svg"}}],
                 "providerMetadata": {
                     "areno": {"input_tokens": [1, 2], "response_tokens": [3], "response_logprobs": [-0.1]}
                 },
@@ -317,4 +317,4 @@ def test_rollout_summary_reports_tool_calls_and_generated_files(tmp_path, capsys
     output = capsys.readouterr().out
     assert (trainable, tool_calls) == (1, 1)
     assert "assistant stop='toolUse' input_tokens=2 response_tokens=1 tool_calls=1" in output
-    assert "file index.html: present" in output
+    assert "file frame-00.svg: present" in output

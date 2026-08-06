@@ -1,4 +1,4 @@
-"""Dataset loader for the 4096 independently specified Pi web-design tasks."""
+"""Dataset loader for 4096 independently specified SVG animation tasks."""
 
 from __future__ import annotations
 
@@ -15,20 +15,18 @@ def load_training_dataset(dataset_path: str, *, default_loader, **_: object) -> 
         task_id = str(record.get("id") or "").strip()
         prompt = str(record.get("design_prompt") or record.get("prompt") or "").strip()
         if not task_id:
-            raise ValueError(f"web task row {row_index} is missing id")
+            raise ValueError(f"animation task row {row_index} is missing id")
         if task_id in seen_ids:
             raise ValueError(f"duplicate web task id: {task_id}")
         if not prompt:
-            raise ValueError(f"web task {task_id} is missing design_prompt")
+            raise ValueError(f"animation task {task_id} is missing design_prompt")
         seen_ids.add(task_id)
         record["id"] = task_id
         record["prompt"] = prompt
         record["design_prompt"] = prompt
         record.pop("max_turns", None)
-        record["files"] = {
-            "README.md": "Create index.html, styles.css, and app.js for the design brief supplied by the agent prompt.\n"
-        }
+        record["files"] = {"README.md": "Create frame-00.svg through frame-07.svg as a seamless 8 FPS loop.\n"}
         records.append(record)
     if len(records) != EXPECTED_TASKS:
-        raise ValueError(f"expected {EXPECTED_TASKS} web tasks, found {len(records)}")
+        raise ValueError(f"expected {EXPECTED_TASKS} animation tasks, found {len(records)}")
     return records

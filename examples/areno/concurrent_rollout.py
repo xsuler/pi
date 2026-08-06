@@ -15,13 +15,14 @@ from pathlib import Path
 from typing import Any
 
 ALL_PI_TOOLS = "read,bash,edit,write,grep,find,ls"
-REQUIRED_FILES = ("index.html", "styles.css", "app.js")
-TOOL_PROTOCOL_PROMPT = """When creating the requested page, follow this tool protocol exactly:
+REQUIRED_FILES = tuple(f"frame-{index:02d}.svg" for index in range(8))
+TOOL_PROTOCOL_PROMPT = """When creating the requested animation, follow this tool protocol exactly:
 - The working directory already exists. Never create it and never pass the working-directory path to write.
-- Call write once per turn with a relative path that is exactly index.html, styles.css, or app.js.
-- Include non-empty content in every write call. Keep each file compact enough to fit within 700 output tokens.
-- Never run rm, rm -rf, or rmdir on the workspace or any created file. Leave all three required files in place.
-- Finish all three files before replying with final text. If a tool fails, correct its arguments instead of repeating them."""
+- Write frame-00.svg through frame-07.svg with relative paths, one self-contained 512x512 SVG per file.
+- Create each frame in a separate tool turn. Include non-empty content in every write call.
+- You may use edit repeatedly after creating any frame; inspect and edit until every frame meets the prompt.
+- Never run rm, rm -rf, or rmdir. Leave all eight required files in place.
+- Finish all eight frames and verify seamless frame-07 to frame-00 continuity before final text."""
 
 
 @dataclass(slots=True)
@@ -219,10 +220,11 @@ def _parse_events(lines: list[str]) -> list[dict[str, Any]]:
 
 def _training_prompt(prompt: str) -> str:
     return (
-        f"{prompt}\nCreate exactly three complete files in the current directory: index.html, styles.css, and "
-        "app.js. Build a polished responsive implementation of the design brief with all requested interactions and "
-        "persisted state where relevant. Do not load external resources. Write each required file in a separate tool "
-        "turn using only its relative filename, then give a concise final answer."
+        f"{prompt}\nCreate frame-00.svg through frame-07.svg as eight consecutive static 512x512 SVG frames forming "
+        "a seamless one-second loop at 8 FPS, creating each frame in a separate tool turn using its relative filename. "
+        "Use Pi tools to create, "
+        "inspect, and edit every frame until the prompt and "
+        "continuity requirements are fulfilled. Do not use scripts or external resources."
     )
 
 
@@ -278,7 +280,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--binary", default=os.environ.get("PI_ARENO_BINARY", "./pi"))
     parser.add_argument(
         "--dataset-path",
-        default=str(Path(__file__).with_name("web_tasks_4096_simpler.jsonl")),
+        default=str(Path(__file__).with_name("svg_animation_tasks_4096.jsonl")),
     )
     parser.add_argument("--records", type=int, default=4)
     parser.add_argument("--n-samples", type=int, default=8)

@@ -7,41 +7,37 @@ from pathlib import Path
 def _load_module():
     path = Path(__file__).with_name("reward_stage1.py")
     spec = importlib.util.spec_from_file_location("pi_areno_reward_stage1", path)
-    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
     spec.loader.exec_module(module)
     return module
 
 
-def _valid_files() -> dict[str, str]:
+def _frames(unique: bool = True):
     return {
-        "index.html": (
-            '<!doctype html><html><head><title>Stock desk</title><link rel="stylesheet" href="styles.css">'
-            '</head><body><h1>Stock desk</h1><button id="update">Update</button><p id="status"></p>'
-            '<script src="app.js"></script></body></html>'
-        ),
-        "styles.css": "body { color: #123; } button:focus { outline: 2px solid blue; }",
-        "app.js": "document.querySelector('#update').addEventListener('click', () => { status.textContent='Ready'; });",
+        f"frame-{index:02d}.svg": (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'
+            f'<circle cx="{64 + (index if unique else 0) * 20}" cy="256" r="40" fill="#e34"/></svg>'
+        )
+        for index in range(8)
     }
 
 
-def test_complete_basic_page_receives_full_score():
-    reward = _load_module()
-
-    assert reward._score(_valid_files()) == 1.0
+def test_complete_animation_receives_full_score():
+    assert _load_module()._score(_frames()) == 1.0
 
 
-def test_missing_file_and_javascript_interaction_reduce_score():
-    reward = _load_module()
-    files = _valid_files()
-    files.pop("app.js")
-
-    assert reward._score(files) < 0.7
+def test_missing_frames_are_penalized():
+    files = _frames()
+    files.pop("frame-07.svg")
+    assert _load_module()._score(files) < 0
 
 
-def test_external_resource_loses_self_containment_credit():
-    reward = _load_module()
-    files = _valid_files()
-    files["index.html"] = files["index.html"].replace("styles.css", "https://example.com/styles.css")
+def test_duplicate_frames_are_penalized():
+    assert _load_module()._score(_frames(unique=False)) < 0.8
 
-    assert reward._score(files) < 1.0
+
+def test_external_resources_are_penalized():
+    files = _frames()
+    files["frame-03.svg"] = files["frame-03.svg"].replace("</svg>", '<image href="https://x/y.png"/></svg>')
+    assert _load_module()._score(files) < 1.0

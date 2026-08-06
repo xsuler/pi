@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the real Pi web reward judge against one existing workspace."""
+"""Run the real Pi SVG-animation reward judge against one workspace."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--workspace",
         required=True,
-        help="Directory containing index.html, styles.css, and app.js",
+        help="Directory containing frame-00.svg through frame-07.svg",
     )
     prompt = parser.add_mutually_exclusive_group(required=True)
     prompt.add_argument("--prompt", help="Design brief passed to the judge")
@@ -38,7 +38,6 @@ def _print_configuration(workspace: Path, files: dict[str, str]) -> None:
     print(f"workspace: {workspace}")
     print(f"endpoint: {endpoint}")
     print(f"model: {os.environ.get('PI_ARENO_JUDGE_MODEL', '<unset>')}")
-    print(f"chromium: {reward._chromium_binary()}")
     for name in reward.REQUIRED_FILES:
         print(f"file {name}: {len(files.get(name, '').encode('utf-8'))} bytes")
 
@@ -55,13 +54,13 @@ def main() -> int:
         raise RuntimeError(f"workspace is missing required files: {', '.join(missing)}")
     _print_configuration(workspace, files)
 
-    print("rendering 1440x1024 page...")
-    svg = reward._html_to_svg(files, args.sample_id)
-    print(f"rendered SVG: {len(svg)} bytes")
-    print("saved render under: /tmp/areno_html")
+    print("rendering eight SVG frames to 512x512 PNGs...")
+    pngs = reward._render_svg_frames(files, args.sample_id)
+    print(f"rendered PNG bytes: {sum(map(len, pngs))}")
+    print("saved frames under: /tmp/areno_animation")
     print("calling multimodal judge...")
     try:
-        scores = reward._judge(svg, files, _design_prompt(args))
+        scores = reward._judge(pngs, files, _design_prompt(args))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         print(f"HTTP {exc.code} {exc.reason}", file=sys.stderr)
@@ -75,7 +74,7 @@ def main() -> int:
         print(f"request failed before an HTTP response: {exc.reason!r}", file=sys.stderr)
         return 3
 
-    names = ("html_quality", "functional_completeness", "visual_alignment", "visual_aesthetics")
+    names = ("svg_quality", "motion_continuity", "prompt_alignment", "visual_aesthetics")
     for name, value in zip(names, scores, strict=True):
         print(f"{name}: {value:.2f}")
     return 0

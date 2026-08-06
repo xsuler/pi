@@ -13,10 +13,9 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_PROMPT = """Create exactly three complete files in the current directory: index.html, styles.css, and app.js.
-Build a polished responsive task tracker with an input, add button, completion toggles, delete controls, and persisted
-state using localStorage. Do not load external resources. Use Pi's tools to inspect the directory and write the files,
-then give a concise final answer."""
+DEFAULT_PROMPT = """Create frame-00.svg through frame-07.svg as eight consecutive self-contained 512x512 SVG frames.
+Animate a red paper airplane making one smooth loop around a navy compass over one second at 8 FPS. Use Pi tools to
+create, inspect, and edit the frames until motion is continuous and frame 07 loops seamlessly to frame 00."""
 ALL_PI_TOOLS = "read,bash,edit,write,grep,find,ls"
 
 
@@ -187,7 +186,7 @@ def _print_summary(events: list[dict[str, Any]], workspace: Path, result: subpro
             print(f"tool_result name={message.get('toolName')!r} error={message.get('isError')!r}")
 
     print(f"Summary: trainable_turns={trainable} tool_calls={tool_calls} events={len(events)}")
-    for name in ("index.html", "styles.css", "app.js"):
+    for name in tuple(f"frame-{index:02d}.svg" for index in range(8)):
         path = workspace / name
         print(f"file {name}: {'present' if path.is_file() else 'missing'} size={path.stat().st_size if path.is_file() else 0}")
     if result.stderr.strip():

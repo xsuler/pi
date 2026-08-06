@@ -15,7 +15,7 @@ from areno.api.agentic import AgentTrajectory, AgentTrajectoryTurn
 
 logger = logging.getLogger(__name__)
 ALL_PI_TOOLS = "read,bash,edit,write,grep,find,ls"
-REQUIRED_FILES = ("index.html", "styles.css", "app.js")
+REQUIRED_FILES = tuple(f"frame-{index:02d}.svg" for index in range(8))
 
 
 async def run_agent(ctx, batch) -> AgentTrajectory:
@@ -286,21 +286,17 @@ def _text(content: Any) -> str:
 
 
 def _prompt(item) -> str:
-    if item.record.get("stage") == 1:
-        return (
-            f"{item.prompt}\nCreate exactly three compact files: index.html, styles.css, and app.js. "
-            "Write each file separately using its relative filename. Keep the implementation simple and complete, "
-            "then give a concise final answer. Never run rm, rm -rf, or rmdir on the workspace or any file you "
-            "create. Once a required file exists, only use read, edit, or write to correct it; leave all three "
-            "required files present when you finish."
-        )
+    names = ", ".join(REQUIRED_FILES)
     return (
-        f"{item.prompt}\nCreate exactly three complete files in the current directory: index.html, styles.css, and "
-        "app.js. Build a polished responsive implementation of the design brief with all requested interactions and "
-        "persisted state where relevant. Do not load external resources. Use Pi's tools to inspect the directory and "
-        "write the files, then give a concise final answer. Never run rm, rm -rf, or rmdir on the workspace or any "
-        "file you create. Once a required file exists, only use read, edit, or write to correct it; leave all three "
-        "required files present when you finish."
+        f"{item.prompt}\nCreate exactly 8 complete consecutive SVG files in the current directory: {names}. Together "
+        "they must form a coherent seamless one-second animation loop at 8 FPS in filename order. Every frame must be "
+        "a self-contained static 512x512 SVG with viewBox='0 0 512 512'; do not use scripts, external resources, CSS "
+        "animation, SMIL animation, or references to another frame. Preserve object identity and interpolate position, "
+        "shape, scale, rotation, color, and opacity smoothly. Use Pi's tools for the full generation loop. You may and "
+        "should use edit on any SVG after creating it. Before finishing, read and inspect the frames, compare adjacent "
+        "frames and frame-07.svg against frame-00.svg, and keep editing them until every frame satisfies the brief, all "
+        "SVG requirements, smooth continuity, and seamless looping. Never run rm, rm -rf, or rmdir. Leave all 8 files "
+        "present and non-empty, then give a concise final answer."
     )
 
 

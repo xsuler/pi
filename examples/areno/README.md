@@ -1,93 +1,81 @@
-# Train Pi with AReno
+# Train Pi to generate SVG animation frames with AReno
 
-This harness trains Pi to generate polished HTML, CSS, and JavaScript pages while AReno supplies the policy model. Pi
-uses its built-in read and write tools to create `index.html`, `styles.css`, and `app.js`. Every non-streaming OpenAI response preserves AReno's exact input tokens,
-response tokens, and rollout log probabilities in the JSON event stream, which the Python adapter converts into
-`AgentTrajectoryTurn` objects.
+This example trains the real Pi coding-agent loop to create a seamless one-second animation as eight consecutive,
+self-contained SVG files: `frame-00.svg` through `frame-07.svg`. Pi owns the complete tool loop. It creates, reads, and
+edits frames until all files satisfy the prompt, SVG constraints, adjacent-frame continuity, and the frame-07 to
+frame-00 loop boundary.
 
-Build the binary first:
+Each frame must be a static `512x512` SVG with `viewBox="0 0 512 512"`. Scripts, SMIL, CSS animation, external assets,
+embedded raster images, and cross-frame references are prohibited. The adapter only validates the final workspace and
+converts Pi events into AReno trajectories; it does not generate or copy frames.
 
-```bash
-npm --prefix packages/coding-agent run build:binary
-```
+## Dataset
 
-This branch also carries a prebuilt Linux x86-64 baseline binary. Extract it to the adapter's default location:
+`svg_animation_tasks_4096.jsonl` contains 4096 fully expanded animation briefs. Every record includes a concrete
+subject, scene, motion narrative, art direction, loop requirement, frame count, FPS, and output-file contract. The
+checked-in JSONL is the training dataset; no runtime combinatorial generator is used.
 
-```bash
-mkdir -p packages/coding-agent/dist
-tar -xzf packages/coding-agent/binaries/pi-linux-x64.tar.gz -C packages/coding-agent/dist
-packages/coding-agent/dist/pi --version
-```
+Use `dataset_loader.py`, which verifies exactly 4096 unique records and supplies the isolated workspace README.
 
-Extract the complete archive rather than copying only the `pi` executable: the adjacent `theme/`, `assets/`, WASM,
-and native runtime files are required by interactive Pi features. The archive SHA-256 is
-`2e699e9f4415b8740c8420c7d65234fe8e74ccdb3fa21aa7690c82aed5ac35a2`.
+## Reward
 
-The checked-in `web_tasks_4096.jsonl` contains 4096 independently specified product and interface design tasks. It is
-the source dataset; no combinatorial dataset generator is included.
-
-`web_tasks_4096_simpler.jsonl` is a moderately easier curriculum with the same 4096 distinct domain/page
-combinations. Each task keeps its information architecture, visual direction, responsive requirement, and two real
-interactions, while reducing the original three-to-four interaction load and full state matrix. It is still intended
-for functional HTML/CSS/JavaScript generation rather than static mockups.
-
-`web_tasks_4096_stage1.jsonl` contains 4096 fully expanded introductory tasks. Each asks for one compact responsive
-page with three labeled values and one button-driven status update. Use `reward_stage1.py` for this stage; it performs
-deterministic file, HTML, CSS, JavaScript, local-reference, and interaction checks without Chromium or an external
-judge:
+Install the Python rasterizer dependency in the training environment:
 
 ```bash
-areno train \
-  --dataset-path /path/to/pi/examples/areno/web_tasks_4096_stage1.jsonl \
-  --dataset-loader-fn /path/to/pi/examples/areno/dataset_loader.py \
-  --agent-fn /path/to/pi/examples/areno/run_agent.py \
-  --reward-fn-path /path/to/pi/examples/areno/reward_stage1.py \
-  ...
+pip install -r examples/areno/requirements.txt
 ```
 
-Configure the external multimodal judge and train:
+`reward.py` validates every SVG, uses CairoSVG to rasterize all eight frames to ordered `512x512` PNGs, and sends the
+prompt followed by frames 00-07 to an OpenAI-compatible multimodal judge. It requests separate rubric-item scores for
+SVG quality, motion continuity, prompt alignment, and visual aesthetics, then aggregates them locally with weakest-area
+penalty and a small turn-efficiency component. Rendered SVG/PNG pairs are retained under `/tmp/areno_animation`.
+
+Configure the judge:
 
 ```bash
 export PI_ARENO_JUDGE_BASE_URL=https://judge.example.com/v1
 export PI_ARENO_JUDGE_API_KEY=...
 export PI_ARENO_JUDGE_MODEL=vision-model
-# Optional when Chromium is not on PATH:
-export PI_ARENO_CHROMIUM=/usr/bin/chromium
+```
 
+For a deterministic curriculum reward that does not call a vision model, use `reward_stage1.py`. It checks all eight
+files, XML validity, the 512 viewBox, visible vector elements, self-containment, and frame diversity.
+
+## Train
+
+Build Pi or point the adapter to an existing binary:
+
+```bash
+npm --prefix packages/coding-agent run build:binary
+export PI_ARENO_BINARY=/path/to/pi
+```
+
+Then run:
+
+```bash
 areno train \
   --ckpt /path/to/checkpoint \
-  --dataset-path /path/to/pi/examples/areno/web_tasks_4096.jsonl \
+  --dataset-path /path/to/pi/examples/areno/svg_animation_tasks_4096.jsonl \
   --dataset-loader-fn /path/to/pi/examples/areno/dataset_loader.py \
   --agent-fn /path/to/pi/examples/areno/run_agent.py \
   --reward-fn-path /path/to/pi/examples/areno/reward.py \
   --algo gspo --world-size 8 --tp-size 4 --n-samples 8
 ```
 
-Set `PI_ARENO_BINARY` when the compiled binary is stored outside
-`packages/coding-agent/dist/pi`. The reward invokes an existing Chromium executable directly; it does not require
-Playwright. It renders the HTML, CSS, and JavaScript at 1440x1024 with external network access disabled, wraps the
-screenshot in a self-contained SVG, asks the external vision model for four separate scores, and adds a small
-efficiency bonus for finishing in fewer assistant turns. Every reward call also saves its PNG screenshot and wrapped
-SVG under `/tmp/areno_html`; task IDs, process IDs, and random suffixes prevent concurrent ranks from overwriting one
-another.
+`PI_MAX_TURNS` defaults to 20. The adapter enforces it at complete Pi `turn_end` boundaries, after tool execution, so
+an in-progress SVG edit is not truncated.
 
-The adapter and both rollout diagnostics use the same Pi OpenAI-completions parameters: non-streaming requests,
-`model=policy`, `max_tokens=16384`, `temperature=1.0`, standard function tools without `strict`, and no explicit
-`tool_choice`. The AReno proxy selects tools with its model-native parser.
+## Diagnostics
 
-Before training, run one real Pi rollout against an active AReno agentic proxy and inspect every assistant/tool event:
+Run one rollout:
 
 ```bash
 export ARENO_BASE_URL=http://127.0.0.1:PORT/v1
 export ARENO_API_KEY=areno-agentic
-export PI_ARENO_BINARY=/path/to/pi
 python examples/areno/test_rollout.py --raw
 ```
 
-The command exits with status 2 when AReno returns trainable tokens but Pi produces no tool call. Use
-`--workspace /tmp/pi-rollout` to retain generated files for inspection.
-
-To reproduce the training batch shape with 4 records, 8 samples each, and 32 concurrent Pi processes:
+Run the concurrent batch-shaped diagnostic:
 
 ```bash
 python examples/areno/concurrent_rollout.py \
@@ -95,10 +83,10 @@ python examples/areno/concurrent_rollout.py \
   --binary "$PI_ARENO_BINARY"
 ```
 
-All workspaces are retained under `/tmp/pi-concurrent-rollout/<run-id>/`. Pi JSONL events and stderr are written to
-the sibling `logs/` directory, so diagnostics survive even when a rollout deletes its own workspace.
+Run the live reward against an existing eight-frame workspace:
 
-The judge receives both the complete HTML/CSS/JS source and the rendered SVG. Source quality is scored for semantic
-structure, responsive behavior, accessibility, validity, and self-containment. Functional completeness is scored
-separately by checking whether every requested interaction has real event logic and visible state transitions. The SVG
-is scored independently for design-brief alignment and visual aesthetics.
+```bash
+python examples/areno/test_reward_live.py \
+  --workspace /tmp/my-animation \
+  --prompt "Animate a bookstore order moving from intake to shelf."
+```

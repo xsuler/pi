@@ -81,13 +81,14 @@ def test_parse_events_skips_non_json_and_non_object_lines():
     ) == [{"type": "agent_start"}, {"type": "agent_end"}]
 
 
-def test_training_prompt_requires_three_files_and_pi_tools():
+def test_training_prompt_requires_eight_frames_and_pi_tools():
     module = _load_module()
 
     prompt = module._training_prompt("Build a task tracker.")
 
     assert prompt.startswith("Build a task tracker.")
-    assert "index.html, styles.css, and app.js" in prompt
+    assert "frame-00.svg through frame-07.svg" in prompt
+    assert "inspect, and edit every frame" in prompt
     assert "separate tool turn" in prompt
     assert "relative filename" in prompt
 
@@ -96,9 +97,9 @@ def test_tool_protocol_prevents_writing_the_workspace_directory():
     module = _load_module()
 
     assert "Never create it" in module.TOOL_PROTOCOL_PROMPT
-    assert "exactly index.html, styles.css, or app.js" in module.TOOL_PROTOCOL_PROMPT
+    assert "frame-00.svg through frame-07.svg" in module.TOOL_PROTOCOL_PROMPT
+    assert "use edit repeatedly" in module.TOOL_PROTOCOL_PROMPT
     assert "Include non-empty content" in module.TOOL_PROTOCOL_PROMPT
-    assert "700 output tokens" in module.TOOL_PROTOCOL_PROMPT
     assert "Never run rm, rm -rf, or rmdir" in module.TOOL_PROTOCOL_PROMPT
 
 
@@ -107,9 +108,7 @@ def test_deleted_workspace_reports_missing_files_without_recreating_it(tmp_path)
     workspace = tmp_path / "deleted-workspace"
 
     assert module._generated_file_sizes(workspace) == {
-        "index.html": 0,
-        "styles.css": 0,
-        "app.js": 0,
+        f"frame-{index:02d}.svg": 0 for index in range(8)
     }
     assert not workspace.exists()
 
