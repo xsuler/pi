@@ -4,6 +4,7 @@ import importlib.util
 import json
 import tempfile
 import types
+import urllib.request
 from pathlib import Path
 
 
@@ -70,7 +71,7 @@ def test_reward_reads_final_workspace_and_cleans_it(monkeypatch):
     def fake_render(files, sample_id):
         captured.update(files)
         assert sample_id == "task-1"
-        return b"svg"
+        return b"\x89PNG\r\n\x1a\nrendered"
 
     monkeypatch.setattr(reward, "_html_to_svg", fake_render)
     monkeypatch.setattr(reward, "_judge", lambda *args: (8.0, 8.0, 8.0, 8.0))
@@ -80,3 +81,37 @@ def test_reward_reads_final_workspace_and_cleans_it(monkeypatch):
     assert score > 0
     assert captured["index.html"] == "<main>final</main>"
     assert not workspace.exists()
+
+
+def test_judge_sends_png_data_url(monkeypatch):
+    reward = _load_reward_module()
+    monkeypatch.setenv("PI_ARENO_JUDGE_BASE_URL", "http://judge.test/v1")
+    monkeypatch.setenv("PI_ARENO_JUDGE_API_KEY", "test-key")
+    monkeypatch.setenv("PI_ARENO_JUDGE_MODEL", "vision-model")
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": json.dumps({
+                "html_quality": 8,
+                "functional_completeness": 7,
+                "visual_alignment": 6,
+                "visual_aesthetics": 5,
+            })}}]}).encode()
+
+    def fake_urlopen(request, timeout):
+        captured.update(json.loads(request.data))
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    files = {name: "content" for name in reward.REQUIRED_FILES}
+    reward._judge(b"\x89PNG\r\n\x1a\nimage", files, "brief")
+
+    image_url = captured["messages"][0]["content"][1]["image_url"]["url"]
+    assert image_url.startswith("data:image/png;base64,")

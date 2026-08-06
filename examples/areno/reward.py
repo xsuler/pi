@@ -26,9 +26,9 @@ def reward_fn(record) -> float:
         if set(files) != set(REQUIRED_FILES):
             logger.warning("Pi web reward missing required files: found=%s workspace=%s", sorted(files), workspace)
             return -1.0
-        rendered_svg = _html_to_svg(files, _sample_id(record))
+        rendered_png = _html_to_svg(files, _sample_id(record))
         html_quality, functionality, alignment, aesthetics = _judge(
-            rendered_svg,
+            rendered_png,
             files,
             str(record.source_record.get("design_prompt") or record.prompt),
         )
@@ -127,6 +127,8 @@ def _html_to_svg(files: dict[str, str], sample_id: str = "sample") -> bytes:
             details = (completed.stderr or completed.stdout)[-4000:]
             raise RuntimeError(f"Chromium rendering failed with exit code {completed.returncode}: {details}")
         png = screenshot.read_bytes()
+        if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise RuntimeError("Chromium screenshot is not a valid PNG")
     encoded = base64.b64encode(png).decode("ascii")
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1024" viewBox="0 0 1440 1024">'
@@ -134,7 +136,10 @@ def _html_to_svg(files: dict[str, str], sample_id: str = "sample") -> bytes:
         "</svg>"
     ).encode("utf-8")
     _save_image_sample(sample_id, png, svg)
-    return svg
+    # Keep the SVG artifact for local inspection, but send the original PNG to
+    # vision APIs. Many OpenAI-compatible servers decode images with Pillow and
+    # reject SVG input even when it embeds a valid PNG.
+    return png
 
 
 def _sample_id(record: Any) -> str:
@@ -165,12 +170,14 @@ def _chromium_binary() -> str:
     raise RuntimeError("web-page reward requires Chromium; set PI_ARENO_CHROMIUM to its executable")
 
 
-def _judge(svg: bytes, files: dict[str, str], prompt: str) -> tuple[float, float, float, float]:
+def _judge(png: bytes, files: dict[str, str], prompt: str) -> tuple[float, float, float, float]:
     base_url = _required_env("PI_ARENO_JUDGE_BASE_URL").rstrip("/")
     api_key = _required_env("PI_ARENO_JUDGE_API_KEY")
     model = _required_env("PI_ARENO_JUDGE_MODEL")
     endpoint = base_url if base_url.endswith("/chat/completions") else f"{base_url}/chat/completions"
-    image_url = f"data:image/svg+xml;base64,{base64.b64encode(svg).decode('ascii')}"
+    if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("vision judge input is not a valid PNG")
+    image_url = f"data:image/png;base64,{base64.b64encode(png).decode('ascii')}"
     source = "\n\n".join(
         f"--- {name} ---\n{files[name][:200_000]}" for name in REQUIRED_FILES
     )
@@ -186,9 +193,9 @@ def _judge(svg: bytes, files: dict[str, str], prompt: str) -> tuple[float, float
         "real event handling and visible state feedback; controls must not be decorative shells; navigation, filters, "
         "dialogs, forms, validation, toggles, and state transitions requested by the brief must form usable end-to-end "
         "flows; loading, empty, error, and success states should be represented where relevant.\n\n"
-        "VISUAL ALIGNMENT PRINCIPLES (judge the SVG image against the brief): required information architecture, "
+        "VISUAL ALIGNMENT PRINCIPLES (judge the rendered image against the brief): required information architecture, "
         "content, controls, page density, domain specificity, and interaction affordances must be visibly represented.\n\n"
-        "VISUAL AESTHETICS PRINCIPLES (judge only the SVG image): hierarchy, typography, spacing, balance, contrast, "
+        "VISUAL AESTHETICS PRINCIPLES (judge only the rendered image): hierarchy, typography, spacing, balance, contrast, "
         "color coherence, polish, and absence of overlap, clipping, generic template styling, or excessive decoration. "
         "The image is the rendered 1440x1024 first viewport.\n\n"
         f"DESIGN BRIEF:\n{prompt}\n\nSOURCE FILES:\n{source}"
