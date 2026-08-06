@@ -16,6 +16,7 @@ from areno.api.agentic import AgentTrajectory, AgentTrajectoryTurn
 
 logger = logging.getLogger(__name__)
 ALL_PI_TOOLS = "read,bash,edit,write,grep,find,ls"
+REQUIRED_FILES = ("index.html", "styles.css", "app.js")
 
 
 async def run_agent(ctx, batch) -> AgentTrajectory:
@@ -62,7 +63,9 @@ async def _run_item(ctx, item, workspace: CodingWorkspace) -> list[AgentTrajecto
     with tempfile.TemporaryDirectory(prefix="pi-areno-config-") as agent_dir:
         _write_models(Path(agent_dir), ctx.get_base_url(), ctx.api_key)
         lines = await _run_pi_process(ctx, workspace.root, agent_dir, _prompt(item))
-        return _events_to_turns(item, lines)
+        turns = _events_to_turns(item, lines)
+        _validate_generated_files(workspace.root)
+        return turns
 
 
 def _empty_workspace(item) -> CodingWorkspace:
@@ -73,6 +76,16 @@ def _empty_workspace(item) -> CodingWorkspace:
 
 def _discard_workspace(workspace: CodingWorkspace) -> None:
     shutil.rmtree(workspace.root, ignore_errors=True)
+
+
+def _validate_generated_files(workspace: Path) -> None:
+    missing = []
+    for name in REQUIRED_FILES:
+        path = workspace / name
+        if not path.is_file() or path.stat().st_size == 0:
+            missing.append(name)
+    if missing:
+        raise RuntimeError(f"Pi did not generate complete required files: {', '.join(missing)}")
 
 
 async def _run_pi_process(ctx, workspace: Path, agent_dir: str, prompt: str) -> list[str]:

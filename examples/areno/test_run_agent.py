@@ -140,6 +140,19 @@ def test_training_explicitly_enables_every_builtin_pi_tool():
     assert module.ALL_PI_TOOLS.split(",") == ["read", "bash", "edit", "write", "grep", "find", "ls"]
 
 
+def test_generated_files_must_all_exist_and_be_nonempty(tmp_path):
+    module = _load_module()
+    (tmp_path / "index.html").write_text("<main>ok</main>", encoding="utf-8")
+    (tmp_path / "styles.css").write_text("body{}", encoding="utf-8")
+    (tmp_path / "app.js").write_text("", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="app.js"):
+        module._validate_generated_files(tmp_path)
+
+    (tmp_path / "app.js").write_text("void 0;", encoding="utf-8")
+    module._validate_generated_files(tmp_path)
+
+
 def test_events_report_pi_model_error_message():
     module = _load_module()
     lines = [
