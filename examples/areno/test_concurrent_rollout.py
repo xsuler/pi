@@ -67,6 +67,20 @@ def test_summarize_counts_trainable_turns_and_tools():
     }
 
 
+def test_parse_events_skips_non_json_and_non_object_lines():
+    module = _load_module()
+
+    assert module._parse_events(
+        [
+            "Pi startup output",
+            '{"type":"agent_start"}',
+            "[]",
+            '{"type":"agent_end"}',
+            "{invalid-json",
+        ]
+    ) == [{"type": "agent_start"}, {"type": "agent_end"}]
+
+
 def test_training_prompt_requires_three_files_and_pi_tools():
     module = _load_module()
 

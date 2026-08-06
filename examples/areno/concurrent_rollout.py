@@ -181,6 +181,18 @@ def _summarize(events: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _parse_events(lines: list[str]) -> list[dict[str, Any]]:
+    events = []
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
 def _training_prompt(prompt: str) -> str:
     return (
         f"{prompt}\nCreate exactly three complete files in the current directory: index.html, styles.css, and "
