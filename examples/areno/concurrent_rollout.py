@@ -250,7 +250,7 @@ def _write_models(agent_dir: Path, base_url: str, api_key: str) -> None:
                     {
                         "id": "policy",
                         "name": "AReno Policy",
-                        "samplingParams": {"temperature": 0.7},
+                        "samplingParams": {"temperature": 1.0},
                     }
                 ],
             }

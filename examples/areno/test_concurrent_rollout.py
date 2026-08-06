@@ -113,11 +113,11 @@ def test_deleted_workspace_reports_missing_files_without_recreating_it(tmp_path)
     assert not workspace.exists()
 
 
-def test_models_config_sets_temperature_to_point_seven(tmp_path):
+def test_models_config_sets_temperature_to_one(tmp_path):
     module = _load_module()
 
     module._write_models(tmp_path, "http://127.0.0.1:3000/v1", "test-key")
 
     config = json.loads((tmp_path / "models.json").read_text(encoding="utf-8"))
     model = config["providers"]["areno"]["models"][0]
-    assert model["samplingParams"] == {"temperature": 0.7}
+    assert model["samplingParams"] == {"temperature": 1.0}
