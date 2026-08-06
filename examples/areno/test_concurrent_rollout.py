@@ -89,3 +89,13 @@ def test_training_prompt_requires_three_files_and_pi_tools():
     assert prompt.startswith("Build a task tracker.")
     assert "index.html, styles.css, and app.js" in prompt
     assert "Use Pi's tools" in prompt
+
+
+def test_models_config_sets_temperature_to_point_seven(tmp_path):
+    module = _load_module()
+
+    module._write_models(tmp_path, "http://127.0.0.1:3000/v1", "test-key")
+
+    config = json.loads((tmp_path / "models.json").read_text(encoding="utf-8"))
+    model = config["providers"]["areno"]["models"][0]
+    assert model["samplingParams"] == {"temperature": 0.7}

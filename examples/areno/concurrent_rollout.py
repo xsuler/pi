@@ -228,7 +228,13 @@ def _write_models(agent_dir: Path, base_url: str, api_key: str) -> None:
                     "supportsReasoningEffort": False,
                     "maxTokensField": "max_tokens",
                 },
-                "models": [{"id": "policy", "name": "AReno Policy"}],
+                "models": [
+                    {
+                        "id": "policy",
+                        "name": "AReno Policy",
+                        "samplingParams": {"temperature": 0.7},
+                    }
+                ],
             }
         }
     }
