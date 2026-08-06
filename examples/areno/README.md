@@ -69,6 +69,16 @@ python examples/areno/test_rollout.py --raw
 The command exits with status 2 when AReno returns trainable tokens but Pi produces no tool call. Use
 `--workspace /tmp/pi-rollout` to retain generated files for inspection.
 
+To reproduce the training batch shape with 4 records, 8 samples each, and 32 concurrent Pi processes:
+
+```bash
+python examples/areno/concurrent_rollout.py \
+  --base-url "$ARENO_BASE_URL" \
+  --binary "$PI_ARENO_BINARY"
+```
+
+All workspaces, Pi JSONL events, and stderr logs are retained under `/tmp/pi-concurrent-rollout/<run-id>/`.
+
 The judge receives both the complete HTML/CSS/JS source and the rendered SVG. Source quality is scored for semantic
 structure, responsive behavior, accessibility, validity, and self-containment. Functional completeness is scored
 separately by checking whether every requested interaction has real event logic and visible state transitions. The SVG
